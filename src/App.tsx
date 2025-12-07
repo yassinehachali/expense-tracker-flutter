@@ -2,7 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
+  signInWithEmailAndPassword,
   signInAnonymously, 
+  signOut,
   onAuthStateChanged,
   type User 
 } from 'firebase/auth';
@@ -27,7 +29,7 @@ import {
   Legend,
   BarChart,
   Bar,
-  XAxis
+  XAxis,
 } from 'recharts';
 import { 
   Plus, 
@@ -45,7 +47,9 @@ import {
   Moon,
   Pencil,
   Check,
-  // Icons for Categories
+  LogOut,
+  Lock,
+  User as UserIcon, 
   Home,
   Utensils,
   Car,
@@ -93,7 +97,6 @@ const appId = 'expense-tracker';
 // ------------------------------------------------------------------
 // 2. FOR THIS PREVIEW ONLY (Keep this active here, Delete locally)
 // ------------------------------------------------------------------
-
 // ------------------------------------------------------------------
 
 const app = initializeApp(firebaseConfig);
@@ -181,10 +184,16 @@ const COLORS = [
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true); 
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [salary, setSalary] = useState<number>(0);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  
+  // Login State
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
   
   // UI State
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
@@ -217,29 +226,53 @@ export default function App() {
 
   // --- Authentication ---
   useEffect(() => {
-    const initAuth = async () => {
-      try {
-        await signInAnonymously(auth);
-      } catch (error) {
-        console.error("Auth error:", error);
-      }
-    };
-    initAuth();
-
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
-      if (!currentUser) setLoading(false);
+      setAuthLoading(false);
     });
     return () => unsubscribe();
   }, []);
 
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError('');
+    setLoading(true);
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (error: any) {
+      console.error("Login failed:", error);
+      setLoginError('Invalid email or password.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGuestLogin = async () => {
+    setLoading(true);
+    try {
+      await signInAnonymously(auth);
+    } catch (error) {
+      console.error("Guest login failed:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      setExpenses([]); 
+      setSalary(0);
+    } catch (error) {
+      console.error("Logout failed:", error);
+    }
+  };
+
   // --- Data Fetching ---
   useEffect(() => {
     if (!user) return;
+    setLoading(true);
 
-    // NOTE: For local project, you can simplify 'artifacts', appId, 'public' to just:
-    // collection(db, 'users', user.uid, 'expenses')
-    // But this path works in both environments.
     const expensesRef = collection(db, 'artifacts', appId, 'users', user.uid, 'expenses');
     const unsubExpenses = onSnapshot(expensesRef, (snapshot) => {
       const data = snapshot.docs.map(doc => ({
@@ -255,7 +288,6 @@ export default function App() {
       setLoading(false);
     });
 
-    // 2. Fetch Settings
     const settingsRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'general');
     const unsubSettings = onSnapshot(settingsRef, (docSnap) => {
       if (docSnap.exists()) {
@@ -265,7 +297,6 @@ export default function App() {
       }
     });
 
-    // 3. Fetch Categories
     const categoriesRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'categories');
     const unsubCategories = onSnapshot(categoriesRef, (docSnap) => {
       if (docSnap.exists()) {
@@ -430,10 +461,13 @@ export default function App() {
   }, [filteredExpenses, salary]);
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
+    const formattedNumber = new Intl.NumberFormat('en-US', {
+      style: 'decimal',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }).format(amount);
+    
+    return `${formattedNumber} DH`;
   };
 
   // --- Theme Classes ---
@@ -453,7 +487,94 @@ export default function App() {
     return <IconComponent className={className} />;
   };
 
-  if (loading) {
+  // --- Render ---
+
+  if (authLoading) {
+    return (
+      <div className={`flex items-center justify-center min-h-screen ${theme.bg} ${theme.textMuted}`}>
+        <Loader2 className="w-8 h-8 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className={`flex items-center justify-center min-h-screen ${theme.bg} transition-colors duration-300`}>
+        <div className={`w-full max-w-md p-8 ${theme.cardBg} rounded-2xl shadow-xl border ${theme.border}`}>
+          {/* ... existing login code ... */}
+          <div className="flex justify-center mb-6">
+            <div className="bg-indigo-600 p-3 rounded-xl shadow-lg shadow-indigo-500/30">
+              <Wallet className="w-8 h-8 text-white" />
+            </div>
+          </div>
+          <h2 className={`text-2xl font-bold text-center mb-2 ${theme.text}`}>Welcome Back</h2>
+          <p className={`text-center ${theme.textMuted} mb-8`}>Please sign in to access your budget.</p>
+          
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label className={`block text-xs font-semibold ${theme.textMuted} uppercase mb-1`}>Email Address</label>
+              <input 
+                type="email" 
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className={`w-full px-4 py-3 rounded-lg border ${theme.border} ${theme.inputBg} ${theme.text} focus:ring-2 focus:ring-indigo-500 outline-none transition-all`}
+                placeholder="you@example.com"
+              />
+            </div>
+            <div>
+              <label className={`block text-xs font-semibold ${theme.textMuted} uppercase mb-1`}>Password</label>
+              <input 
+                type="password" 
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className={`w-full px-4 py-3 rounded-lg border ${theme.border} ${theme.inputBg} ${theme.text} focus:ring-2 focus:ring-indigo-500 outline-none transition-all`}
+                placeholder="••••••••"
+              />
+            </div>
+            
+            {loginError && (
+              <p className="text-red-500 text-sm text-center bg-red-50 dark:bg-red-900/20 p-2 rounded-lg">{loginError}</p>
+            )}
+
+            <button 
+              type="submit"
+              disabled={loading}
+              className="w-full py-3 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2"
+            >
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Lock className="w-4 h-4" /> Sign In</>}
+            </button>
+          </form>
+
+          <div className="mt-4 flex items-center gap-4">
+            <div className={`h-px flex-1 ${theme.border} bg-slate-200`}></div>
+            <span className={`text-xs ${theme.textMuted}`}>OR</span>
+            <div className={`h-px flex-1 ${theme.border} bg-slate-200`}></div>
+          </div>
+
+          <button 
+            onClick={handleGuestLogin}
+            className={`w-full mt-4 py-2 border ${theme.border} rounded-lg text-sm font-medium ${theme.textMuted} hover:${theme.text} hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center justify-center gap-2`}
+          >
+            <UserIcon className="w-4 h-4" />
+            Continue as Guest
+          </button>
+          
+          <div className="mt-6 text-center">
+             <button
+              onClick={() => setIsDarkMode(!isDarkMode)}
+              className={`p-2 rounded-lg ${isDarkMode ? 'bg-slate-700 text-yellow-400' : 'bg-slate-100 text-slate-600'} hover:opacity-80 transition-all inline-flex`}
+            >
+              {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (loading && expenses.length === 0) {
     return (
       <div className={`flex items-center justify-center min-h-screen ${theme.bg} ${theme.textMuted}`}>
         <Loader2 className="w-8 h-8 animate-spin" />
@@ -479,6 +600,14 @@ export default function App() {
               className={`p-2 rounded-lg ${isDarkMode ? 'bg-slate-700 text-yellow-400' : 'bg-slate-100 text-slate-600'} hover:opacity-80 transition-all`}
             >
               {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            </button>
+
+            <button
+              onClick={handleLogout}
+              className={`p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all`}
+              title="Sign Out"
+            >
+              <LogOut className="w-5 h-5" />
             </button>
 
             <div className={`flex items-center gap-2 sm:gap-4 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-100'} rounded-lg p-1`}>
@@ -508,12 +637,13 @@ export default function App() {
       <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-8 space-y-6">
         
         {/* Top Actions & Salary Button */}
-        <div className="flex justify-between items-center">
+        {/* FIXED: Changed to column layout on mobile to prevent squished buttons */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <h2 className="text-2xl font-bold">Dashboard</h2>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
             <button 
                 onClick={() => setShowAddExpenseModal(true)}
-                className={`flex items-center gap-2 px-4 py-2 ${isDarkMode ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-slate-900 hover:bg-slate-800'} text-white rounded-lg transition-colors shadow-sm font-medium`}
+                className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 ${isDarkMode ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-slate-900 hover:bg-slate-800'} text-white rounded-lg transition-colors shadow-sm font-medium`}
             >
                 <Plus className="w-4 h-4" />
                 Add Expense
@@ -523,7 +653,7 @@ export default function App() {
                   setTempSalary(salary === 0 ? '' : salary.toString());
                   setShowSalaryModal(true);
                 }}
-                className={`flex items-center gap-2 px-4 py-2 ${theme.cardBg} border ${theme.border} rounded-lg hover:border-indigo-500 transition-all shadow-sm font-medium`}
+                className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 ${theme.cardBg} border ${theme.border} rounded-lg hover:border-indigo-500 transition-all shadow-sm font-medium`}
             >
                 <Settings className="w-4 h-4" />
                 Set Monthly Salary
@@ -533,7 +663,8 @@ export default function App() {
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className={`${theme.cardBg} p-6 rounded-2xl shadow-sm border ${theme.border} transition-colors duration-300`}>
+          {/* FIXED: Reduced padding on mobile from p-6 to p-4 */}
+          <div className={`${theme.cardBg} p-4 sm:p-6 rounded-2xl shadow-sm border ${theme.border} transition-colors duration-300`}>
             <div className="flex justify-between items-start mb-4">
               <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg text-emerald-600 dark:text-emerald-400">
                 <DollarSign className="w-5 h-5" />
@@ -545,7 +676,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className={`${theme.cardBg} p-6 rounded-2xl shadow-sm border ${theme.border} transition-colors duration-300`}>
+          <div className={`${theme.cardBg} p-4 sm:p-6 rounded-2xl shadow-sm border ${theme.border} transition-colors duration-300`}>
             <div className="flex justify-between items-start mb-4">
               <div className="p-2 bg-rose-100 dark:bg-rose-900/30 rounded-lg text-rose-600 dark:text-rose-400">
                 <TrendingDown className="w-5 h-5" />
@@ -557,7 +688,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className={`${theme.cardBg} p-6 rounded-2xl shadow-sm border ${theme.border} transition-colors duration-300`}>
+          <div className={`${theme.cardBg} p-4 sm:p-6 rounded-2xl shadow-sm border ${theme.border} transition-colors duration-300`}>
             <div className="flex justify-between items-start mb-4">
               <div className="p-2 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg text-indigo-600 dark:text-indigo-400">
                 <Wallet className="w-5 h-5" />
@@ -573,7 +704,7 @@ export default function App() {
         </div>
 
         {/* SPENDING BREAKDOWN */}
-        <div className={`${theme.cardBg} p-6 rounded-2xl shadow-sm border ${theme.border} transition-colors duration-300`}>
+        <div className={`${theme.cardBg} p-4 sm:p-6 rounded-2xl shadow-sm border ${theme.border} transition-colors duration-300`}>
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg font-bold">Spending Breakdown</h3>
             <div className={`flex p-1 rounded-lg border ${theme.border} ${isDarkMode ? 'bg-slate-800' : 'bg-slate-100'}`}>
@@ -631,7 +762,6 @@ export default function App() {
                     />
                   </PieChart>
                 ) : (
-                  // FIXED: Changed left margin from -20 to 0 to prevent first bar from being cut off
                   <BarChart data={stats.chartData} margin={{ top: 10, right: 10, left: 0, bottom: 50 }}>
                     <XAxis 
                       dataKey="name" 
@@ -671,7 +801,7 @@ export default function App() {
 
         {/* TRANSACTION LIST */}
         <div className={`${theme.cardBg} rounded-2xl shadow-sm border ${theme.border} overflow-hidden transition-colors duration-300`}>
-          <div className={`p-6 border-b ${theme.border} flex items-center justify-between`}>
+          <div className={`p-4 sm:p-6 border-b ${theme.border} flex items-center justify-between`}>
             <h2 className="text-lg font-bold">Transactions</h2>
           </div>
 
@@ -725,15 +855,15 @@ export default function App() {
                         </div>
                     ) : (
                         <>
-                        <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-4 flex-1 min-w-0 overflow-hidden">
                           <div 
                             className="w-10 h-10 rounded-full flex items-center justify-center text-white shrink-0 shadow-sm"
                             style={{ backgroundColor: categoryColor }}
                           >
                             {renderIcon(category?.icon || 'MoreHorizontal', "w-5 h-5")}
                           </div>
-                          <div>
-                            <p className={`font-medium ${theme.text}`}>{expense.description}</p>
+                          <div className="overflow-hidden">
+                            <p className={`font-medium ${theme.text} truncate`}>{expense.description}</p>
                             <div className={`flex items-center gap-2 text-xs ${theme.textMuted}`}>
                               <Calendar className="w-3 h-3" />
                               {new Date(expense.date).toLocaleDateString()}
@@ -742,8 +872,8 @@ export default function App() {
                             </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-4">
-                          <span className={`font-bold ${theme.text}`}>
+                        <div className="flex items-center gap-4 flex-shrink-0">
+                          <span className={`font-bold ${theme.text} whitespace-nowrap`}>
                             -{formatCurrency(expense.amount)}
                           </span>
                           <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -790,14 +920,14 @@ export default function App() {
               <div>
                 <label className={`block text-xs font-semibold ${theme.textMuted} uppercase mb-1`}>Amount</label>
                 <div className="relative">
-                  <span className={`absolute left-3 top-1/2 -translate-y-1/2 ${theme.textMuted}`}>$</span>
+                  <span className={`absolute left-3 top-1/2 -translate-y-1/2 ${theme.textMuted}`}>DH</span>
                   <input
                     type="number"
                     step="0.01"
                     required
                     value={newExpense.amount}
                     onChange={(e) => setNewExpense({ ...newExpense, amount: e.target.value })}
-                    className={`w-full pl-7 pr-4 py-2 rounded-lg border ${theme.border} ${theme.inputBg} ${theme.text} focus:ring-2 focus:ring-indigo-500 outline-none transition-all`}
+                    className={`w-full pl-10 pr-4 py-2 rounded-lg border ${theme.border} ${theme.inputBg} ${theme.text} focus:ring-2 focus:ring-indigo-500 outline-none transition-all`}
                     placeholder="0.00"
                     autoFocus
                   />
