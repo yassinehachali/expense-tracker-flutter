@@ -27,8 +27,7 @@ import {
   Legend,
   BarChart,
   Bar,
-  XAxis,
-  CartesianGrid
+  XAxis
 } from 'recharts';
 import { 
   Plus, 
