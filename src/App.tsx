@@ -14,11 +14,14 @@ import {
   doc, 
   addDoc, 
   deleteDoc, 
+  getDocs, 
+  writeBatch, 
   onSnapshot, 
   setDoc,
   serverTimestamp,
   updateDoc,
-  arrayUnion
+  arrayUnion,
+  arrayRemove 
 } from 'firebase/firestore';
 import { 
   PieChart, 
@@ -49,6 +52,8 @@ import {
   Check,
   LogOut,
   Lock,
+  RotateCcw, 
+  AlertTriangle, // Added for warning icon
   User as UserIcon, 
   Home,
   Utensils,
@@ -198,13 +203,14 @@ export default function App() {
   // UI State
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(true); 
   const [chartType, setChartType] = useState<'pie' | 'bar'>('bar');
   
   // Modals
   const [showSalaryModal, setShowSalaryModal] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [showAddExpenseModal, setShowAddExpenseModal] = useState(false);
+  const [showResetModal, setShowResetModal] = useState(false); // ADDED: Reset Modal State
   const [tempSalary, setTempSalary] = useState('');
   
   // New Category Form
@@ -408,6 +414,48 @@ export default function App() {
     }
   };
 
+  const handleDeleteCategory = async (categoryToDelete: Category) => {
+    if (!user) return;
+    if (confirm(`Delete category "${categoryToDelete.name}"?`)) {
+      try {
+        const categoriesRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'categories');
+        await updateDoc(categoriesRef, {
+          list: arrayRemove(categoryToDelete)
+        });
+      } catch (error) {
+        console.error("Error deleting category:", error);
+      }
+    }
+  };
+
+  // ADDED: Function to perform the reset logic
+  const performReset = async () => {
+    if (!user) return;
+    
+    try {
+      setLoading(true);
+      // 1. Reset Salary
+      const settingsRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'general');
+      await setDoc(settingsRef, { salary: 0 }, { merge: true });
+
+      // 2. Delete All Expenses (Batch)
+      const expensesRef = collection(db, 'artifacts', appId, 'users', user.uid, 'expenses');
+      const snapshot = await getDocs(expensesRef);
+      
+      const batch = writeBatch(db);
+      snapshot.docs.forEach((doc) => {
+        batch.delete(doc.ref);
+      });
+      await batch.commit();
+      
+      setShowResetModal(false); // Close modal
+      setLoading(false);
+    } catch (error) {
+      console.error("Error resetting data:", error);
+      setLoading(false);
+    }
+  };
+
   const startEditing = (expense: Expense) => {
     setEditingId(expense.id);
     setEditValues({
@@ -467,7 +515,6 @@ export default function App() {
       maximumFractionDigits: 2,
     }).format(amount);
     
-    // Use Non-Breaking Space (\u00A0) to prevent wrapping
     return `${formattedNumber}\u00A0DH`;
   };
 
@@ -596,6 +643,15 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-3">
+            {/* ADDED: Reset Button triggers Modal */}
+            <button
+              onClick={() => setShowResetModal(true)}
+              className={`p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all`}
+              title="Reset All Data"
+            >
+              <RotateCcw className="w-5 h-5" />
+            </button>
+
             <button
               onClick={() => setIsDarkMode(!isDarkMode)}
               className={`p-2 rounded-lg ${isDarkMode ? 'bg-slate-700 text-yellow-400' : 'bg-slate-100 text-slate-600'} hover:opacity-80 transition-all`}
@@ -636,9 +692,9 @@ export default function App() {
       </header>
 
       <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-8 space-y-6">
+        {/* ... (Existing Dashboard code unchanged) ... */}
         
         {/* Top Actions & Salary Button */}
-        {/* FIXED: Changed to column layout on mobile to prevent squished buttons */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <h2 className="text-2xl font-bold">Dashboard</h2>
           <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -657,14 +713,13 @@ export default function App() {
                 className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 ${theme.cardBg} border ${theme.border} rounded-lg hover:border-indigo-500 transition-all shadow-sm font-medium`}
             >
                 <Settings className="w-4 h-4" />
-                Set Monthly Salary
+                Set Salary
             </button>
           </div>
         </div>
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* FIXED: Reduced padding on mobile from p-6 to p-4 */}
           <div className={`${theme.cardBg} p-4 sm:p-6 rounded-2xl shadow-sm border ${theme.border} transition-colors duration-300`}>
             <div className="flex justify-between items-start mb-4">
               <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg text-emerald-600 dark:text-emerald-400">
@@ -873,8 +928,8 @@ export default function App() {
                             </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          
+                        <div className="flex items-center gap-4 flex-shrink-0">
+                          {/* FIXED: Added text-right to prevent wrapping issues */}
                           <div className="hidden group-hover:flex gap-1 transition-opacity">
                             <button
                               onClick={() => startEditing(expense)}
@@ -891,7 +946,6 @@ export default function App() {
                               <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
-                          {/* MOVED: Amount is now the last element (furthest right), buttons are to its left */}
                           <span className={`font-bold ${theme.text} whitespace-nowrap text-right`}>
                             -{formatCurrency(expense.amount)}
                           </span>
@@ -1033,7 +1087,7 @@ export default function App() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm bg-black/50">
           <div className={`${theme.cardBg} w-full max-w-md rounded-2xl p-6 shadow-2xl border ${theme.border} animate-in zoom-in-95 max-h-[90vh] overflow-y-auto`}>
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold">New Category</h3>
+              <h3 className="text-lg font-bold">Manage Categories</h3>
               <button onClick={() => setShowCategoryModal(false)} className={theme.textMuted}>
                 <X className="w-5 h-5" />
               </button>
@@ -1102,6 +1156,63 @@ export default function App() {
                 Create Category
               </button>
             </form>
+
+            <div className="mt-8 border-t border-slate-200 dark:border-slate-700 pt-6">
+              <h4 className="text-sm font-bold mb-4">Your Categories</h4>
+              <div className="space-y-2">
+                {categories.map((cat, idx) => (
+                  <div key={idx} className="flex items-center justify-between p-3 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs" style={{ backgroundColor: cat.color }}>
+                        {renderIcon(cat.icon, "w-4 h-4")}
+                      </div>
+                      <span className="text-sm font-medium">{cat.name}</span>
+                    </div>
+                    {/* ADDED: Delete button for user-created categories. (Assume defaults can be deleted too if user wants full control) */}
+                    <button 
+                      onClick={() => handleDeleteCategory(cat)}
+                      className="text-slate-400 hover:text-red-500 p-1"
+                      title="Delete Category"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ADDED: Reset Confirmation Modal */}
+      {showResetModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm bg-black/50">
+          <div className={`${theme.cardBg} w-full max-w-sm rounded-2xl p-6 shadow-2xl border ${theme.border} animate-in zoom-in-95`}>
+            <div className="flex flex-col items-center text-center mb-6">
+              <div className="p-3 bg-red-100 rounded-full text-red-600 mb-4">
+                <AlertTriangle className="w-8 h-8" />
+              </div>
+              <h3 className="text-lg font-bold text-red-600">Reset All Data?</h3>
+              <p className={`text-sm ${theme.textMuted} mt-2`}>
+                This will wipe your salary settings and delete all expenses permanently. This action cannot be undone.
+              </p>
+            </div>
+            
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setShowResetModal(false)}
+                className={`flex-1 py-2 border ${theme.border} rounded-lg font-medium hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors ${theme.text}`}
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={performReset}
+                disabled={loading}
+                className="flex-1 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors flex items-center justify-center"
+              >
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Yes, Reset'}
+              </button>
+            </div>
           </div>
         </div>
       )}
