@@ -467,7 +467,8 @@ export default function App() {
       maximumFractionDigits: 2,
     }).format(amount);
     
-    return `${formattedNumber} DH`;
+    // Use Non-Breaking Space (\u00A0) to prevent wrapping
+    return `${formattedNumber}\u00A0DH`;
   };
 
   // --- Theme Classes ---
@@ -872,11 +873,9 @@ export default function App() {
                             </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-4 flex-shrink-0">
-                          <span className={`font-bold ${theme.text} whitespace-nowrap`}>
-                            -{formatCurrency(expense.amount)}
-                          </span>
-                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          
+                          <div className="hidden group-hover:flex gap-1 transition-opacity">
                             <button
                               onClick={() => startEditing(expense)}
                               className={`p-2 ${isDarkMode ? 'text-slate-400 hover:text-indigo-400 hover:bg-slate-700' : 'text-slate-300 hover:text-indigo-500 hover:bg-indigo-50'} rounded-lg transition-all`}
@@ -892,6 +891,10 @@ export default function App() {
                               <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
+                          {/* MOVED: Amount is now the last element (furthest right), buttons are to its left */}
+                          <span className={`font-bold ${theme.text} whitespace-nowrap text-right`}>
+                            -{formatCurrency(expense.amount)}
+                          </span>
                         </div>
                         </>
                     )}
