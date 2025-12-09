@@ -53,8 +53,12 @@ import {
   LogOut,
   Lock,
   RotateCcw, 
-  AlertTriangle, // Added for warning icon
+  AlertTriangle,
   User as UserIcon, 
+  Handshake, 
+  Undo2,     
+  Receipt,   
+  Layers,    
   Home,
   Utensils,
   Car,
@@ -112,7 +116,8 @@ const db = getFirestore(app);
 const ICON_MAP: Record<string, any> = {
   Home, Utensils, Car, Zap, Film, ShoppingBag, HeartPulse, MoreHorizontal,
   Dumbbell, Smartphone, Wifi, Briefcase, Gift, Plane, GraduationCap, Coffee,
-  Music, Gamepad2, PawPrint, Scissors, CreditCard, Landmark, Baby, Shirt
+  Music, Gamepad2, PawPrint, Scissors, CreditCard, Landmark, Baby, Shirt,
+  Handshake
 };
 
 const ICON_OPTIONS = [
@@ -149,6 +154,9 @@ type Expense = {
   category: string;
   description: string;
   date: string;
+  type: 'expense' | 'loan'; 
+  isReturned?: boolean;     
+  loanee?: string;          
   createdAt: any;
 };
 
@@ -205,12 +213,14 @@ export default function App() {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [isDarkMode, setIsDarkMode] = useState(true); 
   const [chartType, setChartType] = useState<'pie' | 'bar'>('bar');
-  
+  const [transactionType, setTransactionType] = useState<'expense' | 'loan'>('expense'); 
+  const [filterType, setFilterType] = useState<'all' | 'expense' | 'loan'>('all');
+
   // Modals
   const [showSalaryModal, setShowSalaryModal] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [showAddExpenseModal, setShowAddExpenseModal] = useState(false);
-  const [showResetModal, setShowResetModal] = useState(false); // ADDED: Reset Modal State
+  const [showResetModal, setShowResetModal] = useState(false); 
   const [tempSalary, setTempSalary] = useState('');
   
   // New Category Form
@@ -334,13 +344,18 @@ export default function App() {
 
     try {
       const expensesRef = collection(db, 'artifacts', appId, 'users', user.uid, 'expenses');
-      const descriptionToUse = newExpense.description || newExpense.category || categories[0].name;
+      
+      const isLoan = transactionType === 'loan';
+      const categoryToSave = isLoan ? 'Loan' : (newExpense.category || categories[0].name);
+      const descriptionToSave = newExpense.description || (isLoan ? 'Friend' : categoryToSave);
 
       await addDoc(expensesRef, {
         amount: parseFloat(newExpense.amount),
-        category: newExpense.category || categories[0].name,
-        description: descriptionToUse,
+        category: categoryToSave,
+        description: descriptionToSave,
         date: newExpense.date,
+        type: transactionType,
+        isReturned: false,
         createdAt: serverTimestamp()
       });
       
@@ -351,8 +366,21 @@ export default function App() {
         description: '',
         date: new Date().toISOString().split('T')[0]
       });
+      setTransactionType('expense');
     } catch (error) {
       console.error("Error adding expense:", error);
+    }
+  };
+
+  const handleToggleLoanReturn = async (expense: Expense) => {
+    if (!user) return;
+    try {
+        const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'expenses', expense.id);
+        await updateDoc(docRef, {
+            isReturned: !expense.isReturned
+        });
+    } catch (error) {
+        console.error("Error toggling loan:", error);
     }
   };
 
@@ -428,17 +456,14 @@ export default function App() {
     }
   };
 
-  // ADDED: Function to perform the reset logic
   const performReset = async () => {
     if (!user) return;
     
     try {
       setLoading(true);
-      // 1. Reset Salary
       const settingsRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'general');
       await setDoc(settingsRef, { salary: 0 }, { merge: true });
 
-      // 2. Delete All Expenses (Batch)
       const expensesRef = collection(db, 'artifacts', appId, 'users', user.uid, 'expenses');
       const snapshot = await getDocs(expensesRef);
       
@@ -448,7 +473,7 @@ export default function App() {
       });
       await batch.commit();
       
-      setShowResetModal(false); // Close modal
+      setShowResetModal(false); 
       setLoading(false);
     } catch (error) {
       console.error("Error resetting data:", error);
@@ -485,28 +510,76 @@ export default function App() {
   };
 
   // --- Derived State ---
+  
+  // 1. FILTERED LIST (For Transactions List & Chart)
+  // This respects the "Expenses | Loans" tabs
   const filteredExpenses = useMemo(() => {
-    return expenses.filter(exp => {
+    let result = expenses.filter(exp => {
+      const d = new Date(exp.date);
+      const isCurrentMonth = d.getMonth() === selectedMonth && d.getFullYear() === selectedYear;
+
+      // Filter Logic
+      if (filterType === 'expense') {
+         // Allow undefined type for backward compatibility (treat as expense)
+         return isCurrentMonth && (exp.type === 'expense' || !exp.type);
+      }
+      
+      if (filterType === 'loan') {
+         return exp.type === 'loan' && (!exp.isReturned || isCurrentMonth);
+      }
+
+      // Default 'all': strict month filtering
+      return isCurrentMonth;
+    });
+
+    // Sort Logic
+    result.sort((a, b) => {
+        if (filterType === 'loan') {
+            if (a.isReturned === b.isReturned) {
+                 return new Date(b.date).getTime() - new Date(a.date).getTime();
+            }
+            return a.isReturned ? 1 : -1;
+        }
+        return new Date(b.date).getTime() - new Date(a.date).getTime();
+    });
+
+    return result;
+  }, [expenses, selectedMonth, selectedYear, filterType]);
+
+  // 2. DASHBOARD STATS (Cards)
+  // Strictly Date-Based (Ignores Tabs). "Total Spent" = Expenses + Unreturned Loans in this month.
+  const dashboardStats = useMemo(() => {
+    const monthlyExpenses = expenses.filter(exp => {
       const d = new Date(exp.date);
       return d.getMonth() === selectedMonth && d.getFullYear() === selectedYear;
     });
-  }, [expenses, selectedMonth, selectedYear]);
 
-  const stats = useMemo(() => {
-    const totalSpent = filteredExpenses.reduce((acc, curr) => acc + curr.amount, 0);
+    const totalSpent = monthlyExpenses.reduce((acc, curr) => {
+        // Treat undefined type as expense
+        const isLoan = curr.type === 'loan';
+        // If it's a loan and returned, don't count as spent (money is back)
+        if (isLoan && curr.isReturned) return acc;
+        return acc + curr.amount;
+    }, 0);
+
     const remaining = salary - totalSpent;
-    
+    return { totalSpent, remaining };
+  }, [expenses, selectedMonth, selectedYear, salary]);
+
+  // 3. CHART DATA (Based on Filtered List)
+  const chartData = useMemo(() => {
     const categoryMap = filteredExpenses.reduce((acc, curr) => {
+      const isLoan = curr.type === 'loan';
+      if (isLoan && curr.isReturned) return acc;
+      
       acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
       return acc;
     }, {} as Record<string, number>);
 
-    const chartData = Object.entries(categoryMap)
+    return Object.entries(categoryMap)
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value);
-
-    return { totalSpent, remaining, chartData };
-  }, [filteredExpenses, salary]);
+  }, [filteredExpenses]);
 
   const formatCurrency = (amount: number) => {
     const formattedNumber = new Intl.NumberFormat('en-US', {
@@ -528,6 +601,8 @@ export default function App() {
     inputBg: isDarkMode ? 'bg-slate-700' : 'bg-white',
     hoverBg: isDarkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-50',
     modalOverlay: isDarkMode ? 'rgba(15, 23, 42, 0.8)' : 'rgba(255, 255, 255, 0.8)',
+    successText: isDarkMode ? 'text-emerald-400' : 'text-emerald-600',
+    successBg: isDarkMode ? 'bg-emerald-900/30' : 'bg-emerald-100',
   };
 
   const renderIcon = (iconKey: string, className = "w-5 h-5") => {
@@ -548,8 +623,8 @@ export default function App() {
   if (!user) {
     return (
       <div className={`flex items-center justify-center min-h-screen ${theme.bg} transition-colors duration-300`}>
+        {/* ... Login Form ... */}
         <div className={`w-full max-w-md p-8 ${theme.cardBg} rounded-2xl shadow-xl border ${theme.border}`}>
-          {/* ... existing login code ... */}
           <div className="flex justify-center mb-6">
             <div className="bg-indigo-600 p-3 rounded-xl shadow-lg shadow-indigo-500/30">
               <Wallet className="w-8 h-8 text-white" />
@@ -643,7 +718,6 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* ADDED: Reset Button triggers Modal */}
             <button
               onClick={() => setShowResetModal(true)}
               className={`p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all`}
@@ -692,7 +766,6 @@ export default function App() {
       </header>
 
       <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-8 space-y-6">
-        {/* ... (Existing Dashboard code unchanged) ... */}
         
         {/* Top Actions & Salary Button */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -703,7 +776,7 @@ export default function App() {
                 className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 ${isDarkMode ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-slate-900 hover:bg-slate-800'} text-white rounded-lg transition-colors shadow-sm font-medium`}
             >
                 <Plus className="w-4 h-4" />
-                Add Expense
+                Add New
             </button>
             <button 
                 onClick={() => {
@@ -719,6 +792,7 @@ export default function App() {
         </div>
 
         {/* Stats Cards */}
+        {/* UPDATED: Uses dashboardStats (Strictly Month Based) */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className={`${theme.cardBg} p-4 sm:p-6 rounded-2xl shadow-sm border ${theme.border} transition-colors duration-300`}>
             <div className="flex justify-between items-start mb-4">
@@ -740,7 +814,7 @@ export default function App() {
             </div>
             <div>
               <p className={`text-sm font-medium ${theme.textMuted} mb-1`}>Total Spent</p>
-              <p className="text-2xl font-bold text-rose-600 dark:text-rose-400">{formatCurrency(stats.totalSpent)}</p>
+              <p className="text-2xl font-bold text-rose-600 dark:text-rose-400">{formatCurrency(dashboardStats.totalSpent)}</p>
             </div>
           </div>
 
@@ -752,14 +826,15 @@ export default function App() {
             </div>
             <div>
               <p className={`text-sm font-medium ${theme.textMuted} mb-1`}>Remaining Balance</p>
-              <p className={`text-2xl font-bold ${stats.remaining < 0 ? 'text-red-500' : theme.text}`}>
-                {formatCurrency(stats.remaining)}
+              <p className={`text-2xl font-bold ${dashboardStats.remaining < 0 ? 'text-red-500' : theme.text}`}>
+                {formatCurrency(dashboardStats.remaining)}
               </p>
             </div>
           </div>
         </div>
 
         {/* SPENDING BREAKDOWN */}
+        {/* Uses chartData (Respects Filters) */}
         <div className={`${theme.cardBg} p-4 sm:p-6 rounded-2xl shadow-sm border ${theme.border} transition-colors duration-300`}>
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg font-bold">Spending Breakdown</h3>
@@ -782,12 +857,12 @@ export default function App() {
           </div>
 
           <div className="h-[300px] w-full relative">
-            {stats.chartData.length > 0 ? (
+            {chartData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 {chartType === 'pie' ? (
                   <PieChart>
                     <Pie
-                      data={stats.chartData}
+                      data={chartData}
                       cx="50%"
                       cy="50%"
                       innerRadius={60}
@@ -796,7 +871,10 @@ export default function App() {
                       dataKey="value"
                       stroke="none"
                     >
-                      {stats.chartData.map((entry, index) => {
+                      {chartData.map((entry, index) => {
+                        // Explicit check for 'Loan' to use the Amber color
+                        if (entry.name === 'Loan') return <Cell key={`cell-${index}`} fill="#f59e0b" />;
+                        
                         const cat = categories.find(c => c.name === entry.name);
                         return (
                           <Cell key={`cell-${index}`} fill={cat ? cat.color : '#ccc'} />
@@ -818,7 +896,7 @@ export default function App() {
                     />
                   </PieChart>
                 ) : (
-                  <BarChart data={stats.chartData} margin={{ top: 10, right: 10, left: 0, bottom: 50 }}>
+                  <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 50 }}>
                     <XAxis 
                       dataKey="name" 
                       axisLine={false}
@@ -839,7 +917,10 @@ export default function App() {
                       }}
                     />
                       <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                        {stats.chartData.map((entry, index) => {
+                        {chartData.map((entry, index) => {
+                          // Explicit check for 'Loan' to use the Amber color
+                          if (entry.name === 'Loan') return <Cell key={`cell-${index}`} fill="#f59e0b" />;
+
                           const cat = categories.find(c => c.name === entry.name);
                           return <Cell key={`cell-${index}`} fill={cat ? cat.color : '#ccc'} />;
                         })}
@@ -857,25 +938,77 @@ export default function App() {
 
         {/* TRANSACTION LIST */}
         <div className={`${theme.cardBg} rounded-2xl shadow-sm border ${theme.border} overflow-hidden transition-colors duration-300`}>
-          <div className={`p-4 sm:p-6 border-b ${theme.border} flex items-center justify-between`}>
+          {/* UPDATED HEADER with Filters */}
+          <div className={`p-4 border-b ${theme.border} flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between`}>
             <h2 className="text-lg font-bold">Transactions</h2>
+            
+            {/* Filter Tabs */}
+            <div className={`flex p-1 rounded-xl border ${theme.border} ${isDarkMode ? 'bg-slate-800' : 'bg-slate-100'} w-full sm:w-auto`}>
+                <button
+                    onClick={() => setFilterType('all')}
+                    className={`flex-1 sm:flex-none px-4 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${filterType === 'all' ? (isDarkMode ? 'bg-slate-700 text-white shadow-sm' : 'bg-white text-indigo-600 shadow-sm') : 'text-slate-500 hover:text-slate-400'}`}
+                >
+                    <Layers className="w-3 h-3" />
+                    All
+                </button>
+                <button
+                    onClick={() => setFilterType('expense')}
+                    className={`flex-1 sm:flex-none px-4 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${filterType === 'expense' ? (isDarkMode ? 'bg-slate-700 text-white shadow-sm' : 'bg-white text-indigo-600 shadow-sm') : 'text-slate-500 hover:text-slate-400'}`}
+                >
+                    <Receipt className="w-3 h-3" />
+                    Expenses
+                </button>
+                <button
+                    onClick={() => setFilterType('loan')}
+                    className={`flex-1 sm:flex-none px-4 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${filterType === 'loan' ? (isDarkMode ? 'bg-slate-700 text-amber-500 shadow-sm' : 'bg-white text-amber-600 shadow-sm') : 'text-slate-500 hover:text-slate-400'}`}
+                >
+                    <Handshake className="w-3 h-3" />
+                    Loans
+                </button>
+            </div>
           </div>
 
           <div className={`divide-y ${isDarkMode ? 'divide-slate-700' : 'divide-slate-100'}`}>
             {filteredExpenses.length === 0 ? (
               <div className={`p-12 text-center ${theme.textMuted}`}>
-                <PieChartIcon className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                <p>No expenses found for {MONTHS[selectedMonth]}</p>
+                {filterType === 'loan' ? (
+                    <>
+                        <Handshake className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                        <p>No active loans found</p>
+                    </>
+                ) : (
+                    <>
+                        <PieChartIcon className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                        <p>No expenses found for {MONTHS[selectedMonth]}</p>
+                    </>
+                )}
               </div>
             ) : (
               filteredExpenses.map((expense) => {
-                const category = categories.find(c => c.name === expense.category);
-                const categoryColor = category?.color || '#64748b';
+                const isLoan = expense.type === 'loan';
+                const isReturned = expense.isReturned;
+                
+                // Determine display properties based on expense type
+                let categoryColor = '#64748b';
+                let iconKey = 'MoreHorizontal';
+
+                if (isLoan) {
+                    categoryColor = '#f59e0b'; // Amber for loans
+                    iconKey = 'Handshake';
+                } else {
+                    const category = categories.find(c => c.name === expense.category);
+                    if (category) {
+                        categoryColor = category.color;
+                        iconKey = category.icon;
+                    }
+                }
+
                 const isEditing = editingId === expense.id;
 
                 return (
-                  <div key={expense.id} className={`p-4 ${theme.hoverBg} flex items-center justify-between group transition-colors min-h-[88px]`}>
+                  <div key={expense.id} className={`p-4 ${theme.hoverBg} flex items-center justify-between group transition-colors min-h-[88px] ${isReturned ? 'opacity-50' : ''}`}>
                     {isEditing ? (
+                        // EDIT MODE (unchanged)
                         <div className="flex items-center gap-2 w-full">
                           <div className="flex-1 space-y-2">
                             <input 
@@ -910,27 +1043,41 @@ export default function App() {
                           </div>
                         </div>
                     ) : (
+                        // NORMAL VIEW
                         <>
                         <div className="flex items-center gap-4 flex-1 min-w-0 overflow-hidden">
                           <div 
-                            className="w-10 h-10 rounded-full flex items-center justify-center text-white shrink-0 shadow-sm"
-                            style={{ backgroundColor: categoryColor }}
+                            className={`w-10 h-10 rounded-full flex items-center justify-center text-white shrink-0 shadow-sm ${isLoan && isReturned ? 'bg-green-500' : ''}`}
+                            style={{ backgroundColor: isLoan && isReturned ? undefined : categoryColor }}
                           >
-                            {renderIcon(category?.icon || 'MoreHorizontal', "w-5 h-5")}
+                             {isLoan && isReturned ? <Check className="w-5 h-5" /> : renderIcon(iconKey, "w-5 h-5")}
                           </div>
                           <div className="overflow-hidden">
-                            <p className={`font-medium ${theme.text} truncate`}>{expense.description}</p>
+                            <p className={`font-medium ${theme.text} truncate ${isReturned ? 'line-through' : ''}`}>
+                                {expense.description}
+                            </p>
                             <div className={`flex items-center gap-2 text-xs ${theme.textMuted}`}>
                               <Calendar className="w-3 h-3" />
                               {new Date(expense.date).toLocaleDateString()}
                               <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
-                              <span>{expense.category}</span>
+                              <span>{isLoan ? (isReturned ? 'Loan Returned' : 'Loan (Pending)') : expense.category}</span>
                             </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-4 flex-shrink-0">
-                          {/* FIXED: Added text-right to prevent wrapping issues */}
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          
                           <div className="hidden group-hover:flex gap-1 transition-opacity">
+                            {/* Loan Return Button */}
+                            {isLoan && !isReturned && (
+                                <button
+                                    onClick={() => handleToggleLoanReturn(expense)}
+                                    className={`p-2 bg-emerald-100 text-emerald-600 hover:bg-emerald-200 rounded-lg transition-all`}
+                                    title="Mark as Returned"
+                                >
+                                    <Undo2 className="w-4 h-4" />
+                                </button>
+                            )}
+
                             <button
                               onClick={() => startEditing(expense)}
                               className={`p-2 ${isDarkMode ? 'text-slate-400 hover:text-indigo-400 hover:bg-slate-700' : 'text-slate-300 hover:text-indigo-500 hover:bg-indigo-50'} rounded-lg transition-all`}
@@ -946,7 +1093,8 @@ export default function App() {
                               <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
-                          <span className={`font-bold ${theme.text} whitespace-nowrap text-right`}>
+                          
+                          <span className={`font-bold whitespace-nowrap text-right ${isReturned ? 'text-emerald-500 line-through decoration-slate-500' : theme.text}`}>
                             -{formatCurrency(expense.amount)}
                           </span>
                         </div>
@@ -962,15 +1110,32 @@ export default function App() {
 
       {/* --- MODALS --- */}
 
-      {/* Add Expense Modal (POPUP) */}
+      {/* Add Transaction Modal (Unified) */}
       {showAddExpenseModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm bg-black/50">
           <div className={`${theme.cardBg} w-full max-w-lg rounded-2xl p-6 shadow-2xl border ${theme.border} animate-in zoom-in-95`}>
+            
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-lg font-bold">Add New Expense</h3>
+              <h3 className="text-lg font-bold">Add Transaction</h3>
               <button onClick={() => setShowAddExpenseModal(false)} className={theme.textMuted}>
                 <X className="w-5 h-5" />
               </button>
+            </div>
+
+            {/* Tabs for Expense vs Loan */}
+            <div className="flex p-1 mb-6 rounded-xl bg-slate-100 dark:bg-slate-800">
+                <button
+                    onClick={() => setTransactionType('expense')}
+                    className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${transactionType === 'expense' ? 'bg-white dark:bg-slate-700 shadow text-indigo-600 dark:text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'}`}
+                >
+                    Expense
+                </button>
+                <button
+                    onClick={() => setTransactionType('loan')}
+                    className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${transactionType === 'loan' ? 'bg-white dark:bg-slate-700 shadow text-amber-500 dark:text-amber-400' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'}`}
+                >
+                    Lend Money
+                </button>
             </div>
             
             <form onSubmit={handleAddExpense} className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -991,40 +1156,59 @@ export default function App() {
                 </div>
               </div>
               
-              <div>
-                <label className={`block text-xs font-semibold ${theme.textMuted} uppercase mb-1`}>Category</label>
-                <div className="flex gap-2">
-                  <select
-                    value={newExpense.category}
-                    onChange={(e) => setNewExpense({ ...newExpense, category: e.target.value })}
-                    className={`w-full px-4 py-2 rounded-lg border ${theme.border} ${theme.inputBg} ${theme.text} focus:ring-2 focus:ring-indigo-500 outline-none transition-all`}
-                  >
-                    <option value="" disabled>Select Category</option>
-                    {categories.map(cat => (
-                      <option key={cat.name} value={cat.name}>{cat.name}</option>
-                    ))}
-                  </select>
-                  <button 
-                    type="button"
-                    onClick={() => setShowCategoryModal(true)}
-                    className={`p-2 border ${theme.border} rounded-lg hover:border-indigo-500 text-indigo-500`}
-                    title="Add Custom Category"
-                  >
-                    <Plus className="w-5 h-5" />
-                  </button>
+              {/* Conditional Field: Category OR Friend Name */}
+              {transactionType === 'expense' ? (
+                  <div>
+                    <label className={`block text-xs font-semibold ${theme.textMuted} uppercase mb-1`}>Category</label>
+                    <div className="flex gap-2">
+                    <select
+                        value={newExpense.category}
+                        onChange={(e) => setNewExpense({ ...newExpense, category: e.target.value })}
+                        className={`w-full px-4 py-2 rounded-lg border ${theme.border} ${theme.inputBg} ${theme.text} focus:ring-2 focus:ring-indigo-500 outline-none transition-all`}
+                    >
+                        <option value="" disabled>Select Category</option>
+                        {categories.map(cat => (
+                        <option key={cat.name} value={cat.name}>{cat.name}</option>
+                        ))}
+                    </select>
+                    <button 
+                        type="button"
+                        onClick={() => setShowCategoryModal(true)}
+                        className={`p-2 border ${theme.border} rounded-lg hover:border-indigo-500 text-indigo-500`}
+                        title="Add Custom Category"
+                    >
+                        <Plus className="w-5 h-5" />
+                    </button>
+                    </div>
                 </div>
-              </div>
+              ) : (
+                <div className="md:col-span-1">
+                     <label className={`block text-xs font-semibold ${theme.textMuted} uppercase mb-1`}>Friend Name</label>
+                     <input
+                        type="text"
+                        required
+                        value={newExpense.description} // Using description field to store friend name
+                        onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })}
+                        className={`w-full px-4 py-2 rounded-lg border ${theme.border} ${theme.inputBg} ${theme.text} focus:ring-2 focus:ring-amber-500 outline-none transition-all`}
+                        placeholder="Who are you lending to?"
+                    />
+                </div>
+              )}
+              
 
-              <div className="md:col-span-2">
-                <label className={`block text-xs font-semibold ${theme.textMuted} uppercase mb-1`}>Description</label>
-                <input
-                  type="text"
-                  value={newExpense.description}
-                  onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })}
-                  className={`w-full px-4 py-2 rounded-lg border ${theme.border} ${theme.inputBg} ${theme.text} focus:ring-2 focus:ring-indigo-500 outline-none transition-all`}
-                  placeholder="What was it for?"
-                />
-              </div>
+              {/* Description is hidden for loans as we use it for Name above, or strictly optional notes */}
+              {transactionType === 'expense' && (
+                <div className="md:col-span-2">
+                    <label className={`block text-xs font-semibold ${theme.textMuted} uppercase mb-1`}>Description</label>
+                    <input
+                    type="text"
+                    value={newExpense.description}
+                    onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })}
+                    className={`w-full px-4 py-2 rounded-lg border ${theme.border} ${theme.inputBg} ${theme.text} focus:ring-2 focus:ring-indigo-500 outline-none transition-all`}
+                    placeholder="What was it for?"
+                    />
+                </div>
+              )}
               
               <div className="md:col-span-2">
                 <label className={`block text-xs font-semibold ${theme.textMuted} uppercase mb-1`}>Date</label>
@@ -1041,9 +1225,9 @@ export default function App() {
               <div className="md:col-span-2 pt-2">
                 <button
                   type="submit"
-                  className="w-full py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-500/20"
+                  className={`w-full py-2 text-white font-medium rounded-lg transition-colors shadow-lg shadow-indigo-500/20 ${transactionType === 'expense' ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-amber-500 hover:bg-amber-600'}`}
                 >
-                  Save Transaction
+                  Save {transactionType === 'expense' ? 'Transaction' : 'Loan'}
                 </button>
               </div>
             </form>
