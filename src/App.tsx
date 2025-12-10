@@ -1,46 +1,46 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
-import { 
-  getAuth, 
+import {
+  getAuth,
   signInWithEmailAndPassword,
-  signInAnonymously, 
+  signInAnonymously,
   signOut,
   onAuthStateChanged,
-  type User 
+  type User
 } from 'firebase/auth';
-import { 
-  getFirestore, 
-  collection, 
-  doc, 
-  addDoc, 
-  deleteDoc, 
-  getDocs, 
-  writeBatch, 
-  onSnapshot, 
+import {
+  getFirestore,
+  collection,
+  doc,
+  addDoc,
+  deleteDoc,
+  getDocs,
+  writeBatch,
+  onSnapshot,
   setDoc,
   serverTimestamp,
   updateDoc,
   arrayUnion,
-  arrayRemove 
+  arrayRemove
 } from 'firebase/firestore';
-import { 
-  PieChart, 
-  Pie, 
-  Cell, 
-  ResponsiveContainer, 
-  Tooltip as RechartsTooltip, 
+import {
+  PieChart,
+  Pie,
+  Cell,
+  ResponsiveContainer,
+  Tooltip as RechartsTooltip,
   Legend,
   BarChart,
   Bar,
   XAxis,
 } from 'recharts';
-import { 
-  Plus, 
-  Trash2, 
-  Wallet, 
-  TrendingDown, 
-  DollarSign, 
-  Calendar, 
+import {
+  Plus,
+  Trash2,
+  Wallet,
+  TrendingDown,
+  DollarSign,
+  Calendar,
   PieChart as PieChartIcon,
   BarChart3,
   Loader2,
@@ -52,13 +52,13 @@ import {
   Check,
   LogOut,
   Lock,
-  RotateCcw, 
+  RotateCcw,
   AlertTriangle,
-  User as UserIcon, 
-  Handshake, 
-  Undo2,     
-  Receipt,   
-  Layers,    
+  User as UserIcon,
+  Handshake,
+  Undo2,
+  Receipt,
+  Layers,
   Home,
   Utensils,
   Car,
@@ -100,7 +100,7 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 // Use a fixed ID for local dev to keep path logic simple
-const appId = 'expense-tracker'; 
+const appId = 'expense-tracker';
 
 
 // ------------------------------------------------------------------
@@ -154,9 +154,9 @@ type Expense = {
   category: string;
   description: string;
   date: string;
-  type: 'expense' | 'loan'; 
-  isReturned?: boolean;     
-  loanee?: string;          
+  type: 'expense' | 'loan';
+  isReturned?: boolean;
+  loanee?: string;
   createdAt: any;
 };
 
@@ -188,8 +188,8 @@ const MONTHS = [
 ];
 
 const COLORS = [
-  '#ef4444', '#f97316', '#f59e0b', '#84cc16', '#10b981', 
-  '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#d946ef', 
+  '#ef4444', '#f97316', '#f59e0b', '#84cc16', '#10b981',
+  '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#d946ef',
   '#f43f5e', '#64748b'
 ];
 
@@ -197,32 +197,32 @@ const COLORS = [
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
-  const [authLoading, setAuthLoading] = useState(true); 
+  const [authLoading, setAuthLoading] = useState(true);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [salary, setSalary] = useState<number>(0);
   const [loading, setLoading] = useState(false);
-  
+
   // Login State
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
-  
+
   // UI State
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [isDarkMode, setIsDarkMode] = useState(true); 
+  const [isDarkMode, setIsDarkMode] = useState(true);
   const [chartType, setChartType] = useState<'pie' | 'bar'>('bar');
-  const [transactionType, setTransactionType] = useState<'expense' | 'loan'>('expense'); 
+  const [transactionType, setTransactionType] = useState<'expense' | 'loan'>('expense');
   const [filterType, setFilterType] = useState<'all' | 'expense' | 'loan'>('all');
 
   // Modals
   const [showSalaryModal, setShowSalaryModal] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [showAddExpenseModal, setShowAddExpenseModal] = useState(false);
-  const [showResetModal, setShowResetModal] = useState(false); 
+  const [showResetModal, setShowResetModal] = useState(false);
   const [tempSalary, setTempSalary] = useState('');
-  
+
   // New Category Form
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryColor, setNewCategoryColor] = useState(COLORS[0]);
@@ -230,7 +230,7 @@ export default function App() {
 
   // Editing State
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editValues, setEditValues] = useState<{description: string, amount: string}>({ description: '', amount: '' });
+  const [editValues, setEditValues] = useState<{ description: string, amount: string }>({ description: '', amount: '' });
 
   // Form State
   const [newExpense, setNewExpense] = useState({
@@ -277,7 +277,7 @@ export default function App() {
   const handleLogout = async () => {
     try {
       await signOut(auth);
-      setExpenses([]); 
+      setExpenses([]);
       setSalary(0);
     } catch (error) {
       console.error("Logout failed:", error);
@@ -295,8 +295,15 @@ export default function App() {
         id: doc.id,
         ...doc.data()
       })) as Expense[];
-      
-      data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      data.sort((a, b) => {
+        const dateA = new Date(a.date).getTime();
+        const dateB = new Date(b.date).getTime();
+        if (dateA !== dateB) return dateB - dateA;
+
+        const getTime = (t: any) => t?.seconds ? t.seconds : 0;
+        return getTime(b.createdAt) - getTime(a.createdAt);
+      });
       setExpenses(data);
       setLoading(false);
     }, (error) => {
@@ -344,7 +351,7 @@ export default function App() {
 
     try {
       const expensesRef = collection(db, 'artifacts', appId, 'users', user.uid, 'expenses');
-      
+
       const isLoan = transactionType === 'loan';
       const categoryToSave = isLoan ? 'Loan' : (newExpense.category || categories[0].name);
       const descriptionToSave = newExpense.description || (isLoan ? 'Friend' : categoryToSave);
@@ -358,7 +365,7 @@ export default function App() {
         isReturned: false,
         createdAt: serverTimestamp()
       });
-      
+
       setShowAddExpenseModal(false);
       setNewExpense({
         amount: '',
@@ -375,12 +382,12 @@ export default function App() {
   const handleToggleLoanReturn = async (expense: Expense) => {
     if (!user) return;
     try {
-        const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'expenses', expense.id);
-        await updateDoc(docRef, {
-            isReturned: !expense.isReturned
-        });
+      const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'expenses', expense.id);
+      await updateDoc(docRef, {
+        isReturned: !expense.isReturned
+      });
     } catch (error) {
-        console.error("Error toggling loan:", error);
+      console.error("Error toggling loan:", error);
     }
   };
 
@@ -409,7 +416,7 @@ export default function App() {
     setNewCategoryName(val);
     if (val.length > 2) {
       const lower = val.toLowerCase();
-      const match = ICON_OPTIONS.find(opt => 
+      const match = ICON_OPTIONS.find(opt =>
         opt.keywords.some(k => lower.includes(k)) || opt.key.toLowerCase() === lower
       );
       if (match) {
@@ -424,12 +431,12 @@ export default function App() {
 
     try {
       const categoriesRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'categories');
-      const newCat = { 
-        name: newCategoryName, 
+      const newCat = {
+        name: newCategoryName,
         color: newCategoryColor,
-        icon: newCategoryIcon 
+        icon: newCategoryIcon
       };
-      
+
       await updateDoc(categoriesRef, {
         list: arrayUnion(newCat)
       });
@@ -458,7 +465,7 @@ export default function App() {
 
   const performReset = async () => {
     if (!user) return;
-    
+
     try {
       setLoading(true);
       const settingsRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'general');
@@ -466,14 +473,14 @@ export default function App() {
 
       const expensesRef = collection(db, 'artifacts', appId, 'users', user.uid, 'expenses');
       const snapshot = await getDocs(expensesRef);
-      
+
       const batch = writeBatch(db);
       snapshot.docs.forEach((doc) => {
         batch.delete(doc.ref);
       });
       await batch.commit();
-      
-      setShowResetModal(false); 
+
+      setShowResetModal(false);
       setLoading(false);
     } catch (error) {
       console.error("Error resetting data:", error);
@@ -496,7 +503,7 @@ export default function App() {
 
   const saveEdit = async () => {
     if (!user || !editingId) return;
-    
+
     try {
       const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'expenses', editingId);
       await updateDoc(docRef, {
@@ -510,7 +517,7 @@ export default function App() {
   };
 
   // --- Derived State ---
-  
+
   // 1. FILTERED LIST (For Transactions List & Chart)
   // This respects the "Expenses | Loans" tabs
   const filteredExpenses = useMemo(() => {
@@ -520,12 +527,12 @@ export default function App() {
 
       // Filter Logic
       if (filterType === 'expense') {
-         // Allow undefined type for backward compatibility (treat as expense)
-         return isCurrentMonth && (exp.type === 'expense' || !exp.type);
+        // Allow undefined type for backward compatibility (treat as expense)
+        return isCurrentMonth && (exp.type === 'expense' || !exp.type);
       }
-      
+
       if (filterType === 'loan') {
-         return exp.type === 'loan' && (!exp.isReturned || isCurrentMonth);
+        return exp.type === 'loan' && (!exp.isReturned || isCurrentMonth);
       }
 
       // Default 'all': strict month filtering
@@ -534,13 +541,33 @@ export default function App() {
 
     // Sort Logic
     result.sort((a, b) => {
-        if (filterType === 'loan') {
-            if (a.isReturned === b.isReturned) {
-                 return new Date(b.date).getTime() - new Date(a.date).getTime();
-            }
-            return a.isReturned ? 1 : -1;
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+
+      // Primary Sort: Date
+      if (dateA !== dateB) {
+        return dateB - dateA;
+      }
+
+      // Secondary Sort: CreatedAt (if available)
+      const getTimestamp = (t: any) => {
+        if (!t) return 0;
+        if (typeof t.toMillis === 'function') return t.toMillis();
+        if (t.seconds) return t.seconds * 1000;
+        return 0;
+      };
+
+      const timeA = getTimestamp(a.createdAt);
+      const timeB = getTimestamp(b.createdAt);
+
+      if (filterType === 'loan') {
+        if (a.isReturned === b.isReturned) {
+          return timeB - timeA;
         }
-        return new Date(b.date).getTime() - new Date(a.date).getTime();
+        return a.isReturned ? 1 : -1;
+      }
+
+      return timeB - timeA;
     });
 
     return result;
@@ -555,11 +582,11 @@ export default function App() {
     });
 
     const totalSpent = monthlyExpenses.reduce((acc, curr) => {
-        // Treat undefined type as expense
-        const isLoan = curr.type === 'loan';
-        // If it's a loan and returned, don't count as spent (money is back)
-        if (isLoan && curr.isReturned) return acc;
-        return acc + curr.amount;
+      // Treat undefined type as expense
+      const isLoan = curr.type === 'loan';
+      // If it's a loan and returned, don't count as spent (money is back)
+      if (isLoan && curr.isReturned) return acc;
+      return acc + curr.amount;
     }, 0);
 
     const remaining = salary - totalSpent;
@@ -571,7 +598,7 @@ export default function App() {
     const categoryMap = filteredExpenses.reduce((acc, curr) => {
       const isLoan = curr.type === 'loan';
       if (isLoan && curr.isReturned) return acc;
-      
+
       acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
       return acc;
     }, {} as Record<string, number>);
@@ -587,7 +614,7 @@ export default function App() {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(amount);
-    
+
     return `${formattedNumber}\u00A0DH`;
   };
 
@@ -632,12 +659,12 @@ export default function App() {
           </div>
           <h2 className={`text-2xl font-bold text-center mb-2 ${theme.text}`}>Welcome Back</h2>
           <p className={`text-center ${theme.textMuted} mb-8`}>Please sign in to access your budget.</p>
-          
+
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className={`block text-xs font-semibold ${theme.textMuted} uppercase mb-1`}>Email Address</label>
-              <input 
-                type="email" 
+              <input
+                type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -647,8 +674,8 @@ export default function App() {
             </div>
             <div>
               <label className={`block text-xs font-semibold ${theme.textMuted} uppercase mb-1`}>Password</label>
-              <input 
-                type="password" 
+              <input
+                type="password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -656,12 +683,12 @@ export default function App() {
                 placeholder="••••••••"
               />
             </div>
-            
+
             {loginError && (
               <p className="text-red-500 text-sm text-center bg-red-50 dark:bg-red-900/20 p-2 rounded-lg">{loginError}</p>
             )}
 
-            <button 
+            <button
               type="submit"
               disabled={loading}
               className="w-full py-3 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2"
@@ -676,16 +703,16 @@ export default function App() {
             <div className={`h-px flex-1 ${theme.border} bg-slate-200`}></div>
           </div>
 
-          <button 
+          <button
             onClick={handleGuestLogin}
             className={`w-full mt-4 py-2 border ${theme.border} rounded-lg text-sm font-medium ${theme.textMuted} hover:${theme.text} hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center justify-center gap-2`}
           >
             <UserIcon className="w-4 h-4" />
             Continue as Guest
           </button>
-          
+
           <div className="mt-6 text-center">
-             <button
+            <button
               onClick={() => setIsDarkMode(!isDarkMode)}
               className={`p-2 rounded-lg ${isDarkMode ? 'bg-slate-700 text-yellow-400' : 'bg-slate-100 text-slate-600'} hover:opacity-80 transition-all inline-flex`}
             >
@@ -742,8 +769,8 @@ export default function App() {
             </button>
 
             <div className={`flex items-center gap-2 sm:gap-4 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-100'} rounded-lg p-1`}>
-              <select 
-                value={selectedMonth} 
+              <select
+                value={selectedMonth}
                 onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
                 className={`bg-transparent border-none text-sm font-medium ${theme.text} focus:ring-0 cursor-pointer py-1 pl-3 outline-none`}
               >
@@ -751,8 +778,8 @@ export default function App() {
                   <option key={m} value={i} className={isDarkMode ? 'bg-slate-800' : ''}>{m}</option>
                 ))}
               </select>
-              <select 
-                value={selectedYear} 
+              <select
+                value={selectedYear}
                 onChange={(e) => setSelectedYear(parseInt(e.target.value))}
                 className={`bg-transparent border-none text-sm font-medium ${theme.text} focus:ring-0 cursor-pointer py-1 pr-3 border-l ${theme.border} outline-none`}
               >
@@ -766,27 +793,27 @@ export default function App() {
       </header>
 
       <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-8 space-y-6">
-        
+
         {/* Top Actions & Salary Button */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <h2 className="text-2xl font-bold">Dashboard</h2>
           <div className="flex items-center gap-2 w-full sm:w-auto">
-            <button 
-                onClick={() => setShowAddExpenseModal(true)}
-                className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 ${isDarkMode ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-slate-900 hover:bg-slate-800'} text-white rounded-lg transition-colors shadow-sm font-medium`}
+            <button
+              onClick={() => setShowAddExpenseModal(true)}
+              className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 ${isDarkMode ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-slate-900 hover:bg-slate-800'} text-white rounded-lg transition-colors shadow-sm font-medium`}
             >
-                <Plus className="w-4 h-4" />
-                Add New
+              <Plus className="w-4 h-4" />
+              Add New
             </button>
-            <button 
-                onClick={() => {
-                  setTempSalary(salary === 0 ? '' : salary.toString());
-                  setShowSalaryModal(true);
-                }}
-                className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 ${theme.cardBg} border ${theme.border} rounded-lg hover:border-indigo-500 transition-all shadow-sm font-medium`}
+            <button
+              onClick={() => {
+                setTempSalary(salary === 0 ? '' : salary.toString());
+                setShowSalaryModal(true);
+              }}
+              className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 ${theme.cardBg} border ${theme.border} rounded-lg hover:border-indigo-500 transition-all shadow-sm font-medium`}
             >
-                <Settings className="w-4 h-4" />
-                Set Salary
+              <Settings className="w-4 h-4" />
+              Set Salary
             </button>
           </div>
         </div>
@@ -839,20 +866,20 @@ export default function App() {
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg font-bold">Spending Breakdown</h3>
             <div className={`flex p-1 rounded-lg border ${theme.border} ${isDarkMode ? 'bg-slate-800' : 'bg-slate-100'}`}>
-                <button
-                    onClick={() => setChartType('bar')}
-                    className={`p-2 rounded-md transition-all ${chartType === 'bar' ? (isDarkMode ? 'bg-slate-700 text-white shadow-sm' : 'bg-white text-indigo-600 shadow-sm') : 'text-slate-400 hover:text-slate-600'}`}
-                    title="Bar Chart"
-                >
-                    <BarChart3 className="w-4 h-4" />
-                </button>
-                <button
-                    onClick={() => setChartType('pie')}
-                    className={`p-2 rounded-md transition-all ${chartType === 'pie' ? (isDarkMode ? 'bg-slate-700 text-white shadow-sm' : 'bg-white text-indigo-600 shadow-sm') : 'text-slate-400 hover:text-slate-600'}`}
-                      title="Pie Chart"
-                >
-                    <PieChartIcon className="w-4 h-4" />
-                </button>
+              <button
+                onClick={() => setChartType('bar')}
+                className={`p-2 rounded-md transition-all ${chartType === 'bar' ? (isDarkMode ? 'bg-slate-700 text-white shadow-sm' : 'bg-white text-indigo-600 shadow-sm') : 'text-slate-400 hover:text-slate-600'}`}
+                title="Bar Chart"
+              >
+                <BarChart3 className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setChartType('pie')}
+                className={`p-2 rounded-md transition-all ${chartType === 'pie' ? (isDarkMode ? 'bg-slate-700 text-white shadow-sm' : 'bg-white text-indigo-600 shadow-sm') : 'text-slate-400 hover:text-slate-600'}`}
+                title="Pie Chart"
+              >
+                <PieChartIcon className="w-4 h-4" />
+              </button>
             </div>
           </div>
 
@@ -874,31 +901,31 @@ export default function App() {
                       {chartData.map((entry, index) => {
                         // Explicit check for 'Loan' to use the Amber color
                         if (entry.name === 'Loan') return <Cell key={`cell-${index}`} fill="#f59e0b" />;
-                        
+
                         const cat = categories.find(c => c.name === entry.name);
                         return (
                           <Cell key={`cell-${index}`} fill={cat ? cat.color : '#ccc'} />
                         );
                       })}
                     </Pie>
-                    <RechartsTooltip 
+                    <RechartsTooltip
                       formatter={(value: number) => formatCurrency(value)}
-                      contentStyle={{ 
+                      contentStyle={{
                         backgroundColor: isDarkMode ? '#1e293b' : '#fff',
                         color: isDarkMode ? '#fff' : '#000',
-                        borderRadius: '8px', 
-                        border: 'none', 
-                        boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' 
+                        borderRadius: '8px',
+                        border: 'none',
+                        boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
                       }}
                     />
-                    <Legend 
-                      formatter={(value) => <span style={{ color: isDarkMode ? '#cbd5e1' : '#475569' }}>{value}</span>} 
+                    <Legend
+                      formatter={(value) => <span style={{ color: isDarkMode ? '#cbd5e1' : '#475569' }}>{value}</span>}
                     />
                   </PieChart>
                 ) : (
                   <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 50 }}>
-                    <XAxis 
-                      dataKey="name" 
+                    <XAxis
+                      dataKey="name"
                       axisLine={false}
                       tickLine={false}
                       tick={{ fill: isDarkMode ? '#94a3b8' : '#64748b', fontSize: 11 }}
@@ -908,22 +935,22 @@ export default function App() {
                     <RechartsTooltip
                       formatter={(value: number) => formatCurrency(value)}
                       cursor={{ fill: isDarkMode ? '#334155' : '#f1f5f9', opacity: 0.4 }}
-                      contentStyle={{ 
+                      contentStyle={{
                         backgroundColor: isDarkMode ? '#1e293b' : '#fff',
                         color: isDarkMode ? '#fff' : '#000',
-                        borderRadius: '8px', 
-                        border: 'none', 
-                        boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' 
+                        borderRadius: '8px',
+                        border: 'none',
+                        boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
                       }}
                     />
-                      <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                        {chartData.map((entry, index) => {
-                          // Explicit check for 'Loan' to use the Amber color
-                          if (entry.name === 'Loan') return <Cell key={`cell-${index}`} fill="#f59e0b" />;
+                    <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                      {chartData.map((entry, index) => {
+                        // Explicit check for 'Loan' to use the Amber color
+                        if (entry.name === 'Loan') return <Cell key={`cell-${index}`} fill="#f59e0b" />;
 
-                          const cat = categories.find(c => c.name === entry.name);
-                          return <Cell key={`cell-${index}`} fill={cat ? cat.color : '#ccc'} />;
-                        })}
+                        const cat = categories.find(c => c.name === entry.name);
+                        return <Cell key={`cell-${index}`} fill={cat ? cat.color : '#ccc'} />;
+                      })}
                     </Bar>
                   </BarChart>
                 )}
@@ -941,30 +968,30 @@ export default function App() {
           {/* UPDATED HEADER with Filters */}
           <div className={`p-4 border-b ${theme.border} flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between`}>
             <h2 className="text-lg font-bold">Transactions</h2>
-            
+
             {/* Filter Tabs */}
             <div className={`flex p-1 rounded-xl border ${theme.border} ${isDarkMode ? 'bg-slate-800' : 'bg-slate-100'} w-full sm:w-auto`}>
-                <button
-                    onClick={() => setFilterType('all')}
-                    className={`flex-1 sm:flex-none px-4 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${filterType === 'all' ? (isDarkMode ? 'bg-slate-700 text-white shadow-sm' : 'bg-white text-indigo-600 shadow-sm') : 'text-slate-500 hover:text-slate-400'}`}
-                >
-                    <Layers className="w-3 h-3" />
-                    All
-                </button>
-                <button
-                    onClick={() => setFilterType('expense')}
-                    className={`flex-1 sm:flex-none px-4 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${filterType === 'expense' ? (isDarkMode ? 'bg-slate-700 text-white shadow-sm' : 'bg-white text-indigo-600 shadow-sm') : 'text-slate-500 hover:text-slate-400'}`}
-                >
-                    <Receipt className="w-3 h-3" />
-                    Expenses
-                </button>
-                <button
-                    onClick={() => setFilterType('loan')}
-                    className={`flex-1 sm:flex-none px-4 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${filterType === 'loan' ? (isDarkMode ? 'bg-slate-700 text-amber-500 shadow-sm' : 'bg-white text-amber-600 shadow-sm') : 'text-slate-500 hover:text-slate-400'}`}
-                >
-                    <Handshake className="w-3 h-3" />
-                    Loans
-                </button>
+              <button
+                onClick={() => setFilterType('all')}
+                className={`flex-1 sm:flex-none px-4 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${filterType === 'all' ? (isDarkMode ? 'bg-slate-700 text-white shadow-sm' : 'bg-white text-indigo-600 shadow-sm') : 'text-slate-500 hover:text-slate-400'}`}
+              >
+                <Layers className="w-3 h-3" />
+                All
+              </button>
+              <button
+                onClick={() => setFilterType('expense')}
+                className={`flex-1 sm:flex-none px-4 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${filterType === 'expense' ? (isDarkMode ? 'bg-slate-700 text-white shadow-sm' : 'bg-white text-indigo-600 shadow-sm') : 'text-slate-500 hover:text-slate-400'}`}
+              >
+                <Receipt className="w-3 h-3" />
+                Expenses
+              </button>
+              <button
+                onClick={() => setFilterType('loan')}
+                className={`flex-1 sm:flex-none px-4 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${filterType === 'loan' ? (isDarkMode ? 'bg-slate-700 text-amber-500 shadow-sm' : 'bg-white text-amber-600 shadow-sm') : 'text-slate-500 hover:text-slate-400'}`}
+              >
+                <Handshake className="w-3 h-3" />
+                Loans
+              </button>
             </div>
           </div>
 
@@ -972,35 +999,35 @@ export default function App() {
             {filteredExpenses.length === 0 ? (
               <div className={`p-12 text-center ${theme.textMuted}`}>
                 {filterType === 'loan' ? (
-                    <>
-                        <Handshake className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                        <p>No active loans found</p>
-                    </>
+                  <>
+                    <Handshake className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                    <p>No active loans found</p>
+                  </>
                 ) : (
-                    <>
-                        <PieChartIcon className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                        <p>No expenses found for {MONTHS[selectedMonth]}</p>
-                    </>
+                  <>
+                    <PieChartIcon className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                    <p>No expenses found for {MONTHS[selectedMonth]}</p>
+                  </>
                 )}
               </div>
             ) : (
               filteredExpenses.map((expense) => {
                 const isLoan = expense.type === 'loan';
                 const isReturned = expense.isReturned;
-                
+
                 // Determine display properties based on expense type
                 let categoryColor = '#64748b';
                 let iconKey = 'MoreHorizontal';
 
                 if (isLoan) {
-                    categoryColor = '#f59e0b'; // Amber for loans
-                    iconKey = 'Handshake';
+                  categoryColor = '#f59e0b'; // Amber for loans
+                  iconKey = 'Handshake';
                 } else {
-                    const category = categories.find(c => c.name === expense.category);
-                    if (category) {
-                        categoryColor = category.color;
-                        iconKey = category.icon;
-                    }
+                  const category = categories.find(c => c.name === expense.category);
+                  if (category) {
+                    categoryColor = category.color;
+                    iconKey = category.icon;
+                  }
                 }
 
                 const isEditing = editingId === expense.id;
@@ -1008,53 +1035,53 @@ export default function App() {
                 return (
                   <div key={expense.id} className={`p-4 ${theme.hoverBg} flex items-center justify-between group transition-colors min-h-[88px] ${isReturned ? 'opacity-50' : ''}`}>
                     {isEditing ? (
-                        // EDIT MODE (unchanged)
-                        <div className="flex items-center gap-2 w-full">
-                          <div className="flex-1 space-y-2">
-                            <input 
-                              value={editValues.description}
-                              onChange={(e) => setEditValues({...editValues, description: e.target.value})}
-                              className={`w-full px-2 py-1 text-sm border ${theme.border} rounded ${theme.inputBg} ${theme.text} focus:outline-none focus:ring-1 focus:ring-indigo-500`}
-                              placeholder="Description"
-                              autoFocus
-                            />
-                            <input 
-                              type="number"
-                              step="0.01"
-                              value={editValues.amount}
-                              onChange={(e) => setEditValues({...editValues, amount: e.target.value})}
-                              className={`w-full px-2 py-1 text-sm border ${theme.border} rounded ${theme.inputBg} ${theme.text} focus:outline-none focus:ring-1 focus:ring-indigo-500`}
-                              placeholder="Amount"
-                            />
-                          </div>
-                          <div className="flex gap-1">
-                            <button 
-                              onClick={saveEdit}
-                              className="p-2 bg-indigo-100 text-indigo-600 rounded-lg hover:bg-indigo-200"
-                            >
-                              <Check className="w-4 h-4" />
-                            </button>
-                            <button 
-                              onClick={cancelEditing}
-                              className="p-2 bg-slate-100 text-slate-500 rounded-lg hover:bg-slate-200"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                          </div>
+                      // EDIT MODE (unchanged)
+                      <div className="flex items-center gap-2 w-full">
+                        <div className="flex-1 space-y-2">
+                          <input
+                            value={editValues.description}
+                            onChange={(e) => setEditValues({ ...editValues, description: e.target.value })}
+                            className={`w-full px-2 py-1 text-sm border ${theme.border} rounded ${theme.inputBg} ${theme.text} focus:outline-none focus:ring-1 focus:ring-indigo-500`}
+                            placeholder="Description"
+                            autoFocus
+                          />
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={editValues.amount}
+                            onChange={(e) => setEditValues({ ...editValues, amount: e.target.value })}
+                            className={`w-full px-2 py-1 text-sm border ${theme.border} rounded ${theme.inputBg} ${theme.text} focus:outline-none focus:ring-1 focus:ring-indigo-500`}
+                            placeholder="Amount"
+                          />
                         </div>
+                        <div className="flex gap-1">
+                          <button
+                            onClick={saveEdit}
+                            className="p-2 bg-indigo-100 text-indigo-600 rounded-lg hover:bg-indigo-200"
+                          >
+                            <Check className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={cancelEditing}
+                            className="p-2 bg-slate-100 text-slate-500 rounded-lg hover:bg-slate-200"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
                     ) : (
-                        // NORMAL VIEW
-                        <>
+                      // NORMAL VIEW
+                      <>
                         <div className="flex items-center gap-4 flex-1 min-w-0 overflow-hidden">
-                          <div 
+                          <div
                             className={`w-10 h-10 rounded-full flex items-center justify-center text-white shrink-0 shadow-sm ${isLoan && isReturned ? 'bg-green-500' : ''}`}
                             style={{ backgroundColor: isLoan && isReturned ? undefined : categoryColor }}
                           >
-                             {isLoan && isReturned ? <Check className="w-5 h-5" /> : renderIcon(iconKey, "w-5 h-5")}
+                            {isLoan && isReturned ? <Check className="w-5 h-5" /> : renderIcon(iconKey, "w-5 h-5")}
                           </div>
                           <div className="overflow-hidden">
                             <p className={`font-medium ${theme.text} truncate ${isReturned ? 'line-through' : ''}`}>
-                                {expense.description}
+                              {expense.description}
                             </p>
                             <div className={`flex items-center gap-2 text-xs ${theme.textMuted}`}>
                               <Calendar className="w-3 h-3" />
@@ -1065,17 +1092,17 @@ export default function App() {
                           </div>
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
-                          
+
                           <div className="hidden group-hover:flex gap-1 transition-opacity">
                             {/* Loan Return Button */}
                             {isLoan && !isReturned && (
-                                <button
-                                    onClick={() => handleToggleLoanReturn(expense)}
-                                    className={`p-2 bg-emerald-100 text-emerald-600 hover:bg-emerald-200 rounded-lg transition-all`}
-                                    title="Mark as Returned"
-                                >
-                                    <Undo2 className="w-4 h-4" />
-                                </button>
+                              <button
+                                onClick={() => handleToggleLoanReturn(expense)}
+                                className={`p-2 bg-emerald-100 text-emerald-600 hover:bg-emerald-200 rounded-lg transition-all`}
+                                title="Mark as Returned"
+                              >
+                                <Undo2 className="w-4 h-4" />
+                              </button>
                             )}
 
                             <button
@@ -1093,12 +1120,12 @@ export default function App() {
                               <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
-                          
+
                           <span className={`font-bold whitespace-nowrap text-right ${isReturned ? 'text-emerald-500 line-through decoration-slate-500' : theme.text}`}>
                             -{formatCurrency(expense.amount)}
                           </span>
                         </div>
-                        </>
+                      </>
                     )}
                   </div>
                 );
@@ -1114,7 +1141,7 @@ export default function App() {
       {showAddExpenseModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm bg-black/50">
           <div className={`${theme.cardBg} w-full max-w-lg rounded-2xl p-6 shadow-2xl border ${theme.border} animate-in zoom-in-95`}>
-            
+
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-lg font-bold">Add Transaction</h3>
               <button onClick={() => setShowAddExpenseModal(false)} className={theme.textMuted}>
@@ -1124,20 +1151,20 @@ export default function App() {
 
             {/* Tabs for Expense vs Loan */}
             <div className="flex p-1 mb-6 rounded-xl bg-slate-100 dark:bg-slate-800">
-                <button
-                    onClick={() => setTransactionType('expense')}
-                    className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${transactionType === 'expense' ? 'bg-white dark:bg-slate-700 shadow text-indigo-600 dark:text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'}`}
-                >
-                    Expense
-                </button>
-                <button
-                    onClick={() => setTransactionType('loan')}
-                    className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${transactionType === 'loan' ? 'bg-white dark:bg-slate-700 shadow text-amber-500 dark:text-amber-400' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'}`}
-                >
-                    Lend Money
-                </button>
+              <button
+                onClick={() => setTransactionType('expense')}
+                className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${transactionType === 'expense' ? 'bg-white dark:bg-slate-700 shadow text-indigo-600 dark:text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'}`}
+              >
+                Expense
+              </button>
+              <button
+                onClick={() => setTransactionType('loan')}
+                className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${transactionType === 'loan' ? 'bg-white dark:bg-slate-700 shadow text-amber-500 dark:text-amber-400' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'}`}
+              >
+                Lend Money
+              </button>
             </div>
-            
+
             <form onSubmit={handleAddExpense} className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className={`block text-xs font-semibold ${theme.textMuted} uppercase mb-1`}>Amount</label>
@@ -1155,61 +1182,61 @@ export default function App() {
                   />
                 </div>
               </div>
-              
+
               {/* Conditional Field: Category OR Friend Name */}
               {transactionType === 'expense' ? (
-                  <div>
-                    <label className={`block text-xs font-semibold ${theme.textMuted} uppercase mb-1`}>Category</label>
-                    <div className="flex gap-2">
+                <div>
+                  <label className={`block text-xs font-semibold ${theme.textMuted} uppercase mb-1`}>Category</label>
+                  <div className="flex gap-2">
                     <select
-                        value={newExpense.category}
-                        onChange={(e) => setNewExpense({ ...newExpense, category: e.target.value })}
-                        className={`w-full px-4 py-2 rounded-lg border ${theme.border} ${theme.inputBg} ${theme.text} focus:ring-2 focus:ring-indigo-500 outline-none transition-all`}
+                      value={newExpense.category}
+                      onChange={(e) => setNewExpense({ ...newExpense, category: e.target.value })}
+                      className={`w-full px-4 py-2 rounded-lg border ${theme.border} ${theme.inputBg} ${theme.text} focus:ring-2 focus:ring-indigo-500 outline-none transition-all`}
                     >
-                        <option value="" disabled>Select Category</option>
-                        {categories.map(cat => (
+                      <option value="" disabled>Select Category</option>
+                      {categories.map(cat => (
                         <option key={cat.name} value={cat.name}>{cat.name}</option>
-                        ))}
+                      ))}
                     </select>
-                    <button 
-                        type="button"
-                        onClick={() => setShowCategoryModal(true)}
-                        className={`p-2 border ${theme.border} rounded-lg hover:border-indigo-500 text-indigo-500`}
-                        title="Add Custom Category"
+                    <button
+                      type="button"
+                      onClick={() => setShowCategoryModal(true)}
+                      className={`p-2 border ${theme.border} rounded-lg hover:border-indigo-500 text-indigo-500`}
+                      title="Add Custom Category"
                     >
-                        <Plus className="w-5 h-5" />
+                      <Plus className="w-5 h-5" />
                     </button>
-                    </div>
+                  </div>
                 </div>
               ) : (
                 <div className="md:col-span-1">
-                     <label className={`block text-xs font-semibold ${theme.textMuted} uppercase mb-1`}>Friend Name</label>
-                     <input
-                        type="text"
-                        required
-                        value={newExpense.description} // Using description field to store friend name
-                        onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })}
-                        className={`w-full px-4 py-2 rounded-lg border ${theme.border} ${theme.inputBg} ${theme.text} focus:ring-2 focus:ring-amber-500 outline-none transition-all`}
-                        placeholder="Who are you lending to?"
-                    />
+                  <label className={`block text-xs font-semibold ${theme.textMuted} uppercase mb-1`}>Friend Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={newExpense.description} // Using description field to store friend name
+                    onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })}
+                    className={`w-full px-4 py-2 rounded-lg border ${theme.border} ${theme.inputBg} ${theme.text} focus:ring-2 focus:ring-amber-500 outline-none transition-all`}
+                    placeholder="Who are you lending to?"
+                  />
                 </div>
               )}
-              
+
 
               {/* Description is hidden for loans as we use it for Name above, or strictly optional notes */}
               {transactionType === 'expense' && (
                 <div className="md:col-span-2">
-                    <label className={`block text-xs font-semibold ${theme.textMuted} uppercase mb-1`}>Description</label>
-                    <input
+                  <label className={`block text-xs font-semibold ${theme.textMuted} uppercase mb-1`}>Description</label>
+                  <input
                     type="text"
                     value={newExpense.description}
                     onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })}
                     className={`w-full px-4 py-2 rounded-lg border ${theme.border} ${theme.inputBg} ${theme.text} focus:ring-2 focus:ring-indigo-500 outline-none transition-all`}
                     placeholder="What was it for?"
-                    />
+                  />
                 </div>
               )}
-              
+
               <div className="md:col-span-2">
                 <label className={`block text-xs font-semibold ${theme.textMuted} uppercase mb-1`}>Date</label>
                 <input
@@ -1221,7 +1248,7 @@ export default function App() {
                   style={{ colorScheme: isDarkMode ? 'dark' : 'light' }}
                 />
               </div>
-              
+
               <div className="md:col-span-2 pt-2">
                 <button
                   type="submit"
@@ -1256,7 +1283,7 @@ export default function App() {
               placeholder="0.00"
               autoFocus
             />
-            <button 
+            <button
               onClick={handleUpdateSalary}
               className="w-full py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700"
             >
@@ -1276,7 +1303,7 @@ export default function App() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
+
             <form onSubmit={handleAddCategory} className="space-y-6">
               <div>
                 <label className={`block text-xs font-semibold ${theme.textMuted} uppercase mb-1`}>Category Name</label>
@@ -1289,7 +1316,7 @@ export default function App() {
                   placeholder="e.g. Gym, Subscriptions"
                 />
               </div>
-              
+
               <div>
                 <label className={`block text-xs font-semibold ${theme.textMuted} uppercase mb-2`}>Select Icon</label>
                 <div className={`p-3 rounded-lg border ${theme.border} ${isDarkMode ? 'bg-slate-900/50' : 'bg-slate-50'}`}>
@@ -1304,8 +1331,8 @@ export default function App() {
                           onClick={() => setNewCategoryIcon(opt.key)}
                           className={`
                             p-2 rounded-lg flex items-center justify-center transition-all
-                            ${isSelected 
-                              ? 'bg-indigo-600 text-white shadow-md scale-110' 
+                            ${isSelected
+                              ? 'bg-indigo-600 text-white shadow-md scale-110'
                               : `text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700`}
                           `}
                           title={opt.key}
@@ -1333,7 +1360,7 @@ export default function App() {
                 </div>
               </div>
 
-              <button 
+              <button
                 type="submit"
                 className="w-full py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 mt-2"
               >
@@ -1353,7 +1380,7 @@ export default function App() {
                       <span className="text-sm font-medium">{cat.name}</span>
                     </div>
                     {/* ADDED: Delete button for user-created categories. (Assume defaults can be deleted too if user wants full control) */}
-                    <button 
+                    <button
                       onClick={() => handleDeleteCategory(cat)}
                       className="text-slate-400 hover:text-red-500 p-1"
                       title="Delete Category"
@@ -1381,15 +1408,15 @@ export default function App() {
                 This will wipe your salary settings and delete all expenses permanently. This action cannot be undone.
               </p>
             </div>
-            
+
             <div className="flex gap-3">
-              <button 
+              <button
                 onClick={() => setShowResetModal(false)}
                 className={`flex-1 py-2 border ${theme.border} rounded-lg font-medium hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors ${theme.text}`}
               >
                 Cancel
               </button>
-              <button 
+              <button
                 onClick={performReset}
                 disabled={loading}
                 className="flex-1 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors flex items-center justify-center"
