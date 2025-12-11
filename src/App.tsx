@@ -82,7 +82,11 @@ import {
   CreditCard,
   Landmark,
   Baby,
-  Shirt
+  Shirt,
+  Banknote,
+  History,
+  CalendarDays,
+  MoreVertical,
 } from 'lucide-react';
 
 // --- Firebase Configuration & Initialization ---
@@ -114,10 +118,10 @@ const db = getFirestore(app);
 
 // --- Icon System Configuration ---
 const ICON_MAP: Record<string, any> = {
-  Home, Utensils, Car, Zap, Film, ShoppingBag, HeartPulse, MoreHorizontal,
+  Home, Utensils, Car, Zap, Film, ShoppingBag, HeartPulse, MoreHorizontal, MoreVertical,
   Dumbbell, Smartphone, Wifi, Briefcase, Gift, Plane, GraduationCap, Coffee,
   Music, Gamepad2, PawPrint, Scissors, CreditCard, Landmark, Baby, Shirt,
-  Handshake
+  Handshake, Banknote
 };
 
 const ICON_OPTIONS = [
@@ -154,8 +158,9 @@ type Expense = {
   category: string;
   description: string;
   date: string;
-  type: 'expense' | 'loan';
+  type: 'expense' | 'loan' | 'income';
   isReturned?: boolean;
+  returnedAmount?: number;
   loanee?: string;
   createdAt: any;
 };
@@ -213,15 +218,19 @@ export default function App() {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [chartType, setChartType] = useState<'pie' | 'bar'>('bar');
-  const [transactionType, setTransactionType] = useState<'expense' | 'loan'>('expense');
-  const [filterType, setFilterType] = useState<'all' | 'expense' | 'loan'>('all');
+  const [transactionType, setTransactionType] = useState<'expense' | 'loan' | 'income'>('expense');
+  const [filterType, setFilterType] = useState<'all' | 'expense' | 'loan' | 'income'>('all');
 
   // Modals
   const [showSalaryModal, setShowSalaryModal] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [showAddExpenseModal, setShowAddExpenseModal] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
+  const [showRepaymentModal, setShowRepaymentModal] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [tempSalary, setTempSalary] = useState('');
+  const [repaymentAmount, setRepaymentAmount] = useState('');
+  const [selectedLoan, setSelectedLoan] = useState<Expense | null>(null);
 
   // New Category Form
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -231,6 +240,11 @@ export default function App() {
   // Editing State
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<{ description: string, amount: string }>({ description: '', amount: '' });
+
+  // Mobile State
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'history' | 'settings'>('dashboard');
+  const [showActionSheet, setShowActionSheet] = useState(false);
+  const [selectedActionExpense, setSelectedActionExpense] = useState<Expense | null>(null);
 
   // Form State
   const [newExpense, setNewExpense] = useState({
@@ -353,8 +367,14 @@ export default function App() {
       const expensesRef = collection(db, 'artifacts', appId, 'users', user.uid, 'expenses');
 
       const isLoan = transactionType === 'loan';
-      const categoryToSave = isLoan ? 'Loan' : (newExpense.category || categories[0].name);
-      const descriptionToSave = newExpense.description || (isLoan ? 'Friend' : categoryToSave);
+      const isIncome = transactionType === 'income';
+
+      let categoryToSave = newExpense.category;
+      if (isLoan) categoryToSave = 'Loan';
+      if (isIncome) categoryToSave = 'Income';
+      if (!categoryToSave) categoryToSave = categories[0].name;
+
+      const descriptionToSave = newExpense.description || (isLoan ? 'Friend' : (isIncome ? 'Source' : categoryToSave));
 
       await addDoc(expensesRef, {
         amount: parseFloat(newExpense.amount),
@@ -379,17 +399,37 @@ export default function App() {
     }
   };
 
-  const handleToggleLoanReturn = async (expense: Expense) => {
-    if (!user) return;
+  const handleOpenRepayment = (expense: Expense) => {
+    setSelectedLoan(expense);
+    setRepaymentAmount('');
+    setShowRepaymentModal(true);
+  };
+
+  const handleAddRepayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !selectedLoan) return;
+
     try {
-      const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'expenses', expense.id);
+      const amountToAdd = parseFloat(repaymentAmount) || 0;
+      const currentReturned = selectedLoan.returnedAmount || 0;
+      const newReturned = currentReturned + amountToAdd;
+
+      const isFullyReturned = newReturned >= selectedLoan.amount;
+
+      const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'expenses', selectedLoan.id);
       await updateDoc(docRef, {
-        isReturned: !expense.isReturned
+        returnedAmount: newReturned,
+        isReturned: isFullyReturned
       });
+
+      setShowRepaymentModal(false);
+      setSelectedLoan(null);
     } catch (error) {
-      console.error("Error toggling loan:", error);
+      console.error("Error adding repayment:", error);
     }
   };
+
+
 
   const handleDeleteExpense = async (id: string) => {
     if (!user) return;
@@ -527,12 +567,16 @@ export default function App() {
 
       // Filter Logic
       if (filterType === 'expense') {
-        // Allow undefined type for backward compatibility (treat as expense)
-        return isCurrentMonth && (exp.type === 'expense' || !exp.type);
+        const type = exp.type || 'expense';
+        return isCurrentMonth && type === 'expense';
       }
 
       if (filterType === 'loan') {
         return exp.type === 'loan' && (!exp.isReturned || isCurrentMonth);
+      }
+
+      if (filterType === 'income') {
+        return isCurrentMonth && exp.type === 'income';
       }
 
       // Default 'all': strict month filtering
@@ -583,21 +627,47 @@ export default function App() {
 
     const totalSpent = monthlyExpenses.reduce((acc, curr) => {
       // Treat undefined type as expense
-      const isLoan = curr.type === 'loan';
-      // If it's a loan and returned, don't count as spent (money is back)
-      if (isLoan && curr.isReturned) return acc;
-      return acc + curr.amount;
+      const type = curr.type || 'expense';
+
+      if (type === 'income') return acc; // Income doesn't add to spent
+
+      if (type === 'loan') {
+        // For loans, spent is (amount - returnedAmount)
+        // If isReturned is purely true but returnedAmount is undefined (legacy), assume 0 cost (full return)
+        // logic: cost = amount - returned. 
+        const returned = curr.returnedAmount || (curr.isReturned ? curr.amount : 0);
+        return acc + (curr.amount - returned);
+      }
+
+      return acc + curr.amount; // Expenses
     }, 0);
 
-    const remaining = salary - totalSpent;
-    return { totalSpent, remaining };
+    const totalIncome = monthlyExpenses.reduce((acc, curr) => {
+      if (curr.type === 'income') return acc + curr.amount;
+      return acc;
+    }, 0);
+
+    const remaining = (salary + totalIncome) - totalSpent;
+    return { totalSpent, remaining, totalIncome };
   }, [expenses, selectedMonth, selectedYear, salary]);
 
   // 3. CHART DATA (Based on Filtered List)
   const chartData = useMemo(() => {
     const categoryMap = filteredExpenses.reduce((acc, curr) => {
-      const isLoan = curr.type === 'loan';
-      if (isLoan && curr.isReturned) return acc;
+      const type = curr.type || 'expense';
+      // Don't show loans or income in spending chart for now, or handle differently
+      if (type === 'income') return acc;
+
+      if (type === 'loan') {
+        if (curr.isReturned) return acc;
+        const returned = curr.returnedAmount || 0;
+        const remainingCost = curr.amount - returned;
+        if (remainingCost <= 0) return acc;
+
+        const cat = 'Loan';
+        acc[cat] = (acc[cat] || 0) + remainingCost;
+        return acc;
+      }
 
       acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
       return acc;
@@ -745,48 +815,61 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setShowResetModal(true)}
-              className={`p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all`}
-              title="Reset All Data"
-            >
-              <RotateCcw className="w-5 h-5" />
-            </button>
+            <div className="flex items-center gap-3">
+              {/* Desktop-only Actions */}
+              <div className="hidden md:flex items-center gap-3">
+                <button
+                  onClick={() => setShowHistoryModal(true)}
+                  className={`p-2 rounded-lg text-slate-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all`}
+                  title="History"
+                >
+                  <History className="w-5 h-5" />
+                </button>
 
-            <button
-              onClick={() => setIsDarkMode(!isDarkMode)}
-              className={`p-2 rounded-lg ${isDarkMode ? 'bg-slate-700 text-yellow-400' : 'bg-slate-100 text-slate-600'} hover:opacity-80 transition-all`}
-            >
-              {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-            </button>
+                <button
+                  onClick={() => setShowResetModal(true)}
+                  className={`p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all`}
+                  title="Reset All Data"
+                >
+                  <RotateCcw className="w-5 h-5" />
+                </button>
 
-            <button
-              onClick={handleLogout}
-              className={`p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all`}
-              title="Sign Out"
-            >
-              <LogOut className="w-5 h-5" />
-            </button>
+                <button
+                  onClick={() => setIsDarkMode(!isDarkMode)}
+                  className={`p-2 rounded-lg ${isDarkMode ? 'bg-slate-700 text-yellow-400' : 'bg-slate-100 text-slate-600'} hover:opacity-80 transition-all`}
+                >
+                  {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+                </button>
 
-            <div className={`flex items-center gap-2 sm:gap-4 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-100'} rounded-lg p-1`}>
-              <select
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-                className={`bg-transparent border-none text-sm font-medium ${theme.text} focus:ring-0 cursor-pointer py-1 pl-3 outline-none`}
-              >
-                {MONTHS.map((m, i) => (
-                  <option key={m} value={i} className={isDarkMode ? 'bg-slate-800' : ''}>{m}</option>
-                ))}
-              </select>
-              <select
-                value={selectedYear}
-                onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                className={`bg-transparent border-none text-sm font-medium ${theme.text} focus:ring-0 cursor-pointer py-1 pr-3 border-l ${theme.border} outline-none`}
-              >
-                {[2023, 2024, 2025, 2026].map(y => (
-                  <option key={y} value={y} className={isDarkMode ? 'bg-slate-800' : ''}>{y}</option>
-                ))}
-              </select>
+                <button
+                  onClick={handleLogout}
+                  className={`p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all`}
+                  title="Sign Out"
+                >
+                  <LogOut className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className={`flex items-center gap-2 sm:gap-4 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-100'} rounded-lg p-1`}>
+                <select
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
+                  className={`bg-transparent border-none text-sm font-medium ${theme.text} focus:ring-0 cursor-pointer py-1 pl-3 outline-none`}
+                >
+                  {MONTHS.map((m, i) => (
+                    <option key={m} value={i} className={isDarkMode ? 'bg-slate-800' : ''}>{m}</option>
+                  ))}
+                </select>
+                <select
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                  className={`bg-transparent border-none text-sm font-medium ${theme.text} focus:ring-0 cursor-pointer py-1 pr-3 border-l ${theme.border} outline-none`}
+                >
+                  {[2023, 2024, 2025, 2026].map(y => (
+                    <option key={y} value={y} className={isDarkMode ? 'bg-slate-800' : ''}>{y}</option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
         </div>
@@ -794,345 +877,438 @@ export default function App() {
 
       <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-8 space-y-6">
 
-        {/* Top Actions & Salary Button */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <h2 className="text-2xl font-bold">Dashboard</h2>
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <button
-              onClick={() => setShowAddExpenseModal(true)}
-              className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 ${isDarkMode ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-slate-900 hover:bg-slate-800'} text-white rounded-lg transition-colors shadow-sm font-medium`}
-            >
-              <Plus className="w-4 h-4" />
-              Add New
-            </button>
-            <button
-              onClick={() => {
-                setTempSalary(salary === 0 ? '' : salary.toString());
-                setShowSalaryModal(true);
-              }}
-              className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 ${theme.cardBg} border ${theme.border} rounded-lg hover:border-indigo-500 transition-all shadow-sm font-medium`}
-            >
-              <Settings className="w-4 h-4" />
-              Set Salary
-            </button>
-          </div>
-        </div>
+        {/* --- SETTINGS TAB VIEW --- */}
+        {activeTab === 'settings' && (
+          <div className="space-y-4 animate-in fade-in zoom-in-95 duration-200">
+            <h2 className="text-2xl font-bold mb-6">Settings</h2>
 
-        {/* Stats Cards */}
-        {/* UPDATED: Uses dashboardStats (Strictly Month Based) */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className={`${theme.cardBg} p-4 sm:p-6 rounded-2xl shadow-sm border ${theme.border} transition-colors duration-300`}>
-            <div className="flex justify-between items-start mb-4">
-              <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg text-emerald-600 dark:text-emerald-400">
-                <DollarSign className="w-5 h-5" />
-              </div>
-            </div>
-            <div>
-              <p className={`text-sm font-medium ${theme.textMuted} mb-1`}>Monthly Income</p>
-              <p className="text-2xl font-bold">{formatCurrency(salary)}</p>
-            </div>
-          </div>
-
-          <div className={`${theme.cardBg} p-4 sm:p-6 rounded-2xl shadow-sm border ${theme.border} transition-colors duration-300`}>
-            <div className="flex justify-between items-start mb-4">
-              <div className="p-2 bg-rose-100 dark:bg-rose-900/30 rounded-lg text-rose-600 dark:text-rose-400">
-                <TrendingDown className="w-5 h-5" />
-              </div>
-            </div>
-            <div>
-              <p className={`text-sm font-medium ${theme.textMuted} mb-1`}>Total Spent</p>
-              <p className="text-2xl font-bold text-rose-600 dark:text-rose-400">{formatCurrency(dashboardStats.totalSpent)}</p>
-            </div>
-          </div>
-
-          <div className={`${theme.cardBg} p-4 sm:p-6 rounded-2xl shadow-sm border ${theme.border} transition-colors duration-300`}>
-            <div className="flex justify-between items-start mb-4">
-              <div className="p-2 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg text-indigo-600 dark:text-indigo-400">
-                <Wallet className="w-5 h-5" />
-              </div>
-            </div>
-            <div>
-              <p className={`text-sm font-medium ${theme.textMuted} mb-1`}>Remaining Balance</p>
-              <p className={`text-2xl font-bold ${dashboardStats.remaining < 0 ? 'text-red-500' : theme.text}`}>
-                {formatCurrency(dashboardStats.remaining)}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* SPENDING BREAKDOWN */}
-        {/* Uses chartData (Respects Filters) */}
-        <div className={`${theme.cardBg} p-4 sm:p-6 rounded-2xl shadow-sm border ${theme.border} transition-colors duration-300`}>
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-bold">Spending Breakdown</h3>
-            <div className={`flex p-1 rounded-lg border ${theme.border} ${isDarkMode ? 'bg-slate-800' : 'bg-slate-100'}`}>
+            <div className={`${theme.cardBg} rounded-2xl border ${theme.border} overflow-hidden`}>
               <button
-                onClick={() => setChartType('bar')}
-                className={`p-2 rounded-md transition-all ${chartType === 'bar' ? (isDarkMode ? 'bg-slate-700 text-white shadow-sm' : 'bg-white text-indigo-600 shadow-sm') : 'text-slate-400 hover:text-slate-600'}`}
-                title="Bar Chart"
+                onClick={() => setIsDarkMode(!isDarkMode)}
+                className={`w-full p-4 flex items-center justify-between border-b ${theme.border} hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors`}
               >
-                <BarChart3 className="w-4 h-4" />
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-lg ${isDarkMode ? 'bg-slate-700 text-yellow-400' : 'bg-indigo-100 text-indigo-600'}`}>
+                    {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+                  </div>
+                  <div className="text-left">
+                    <p className="font-bold">Appearance</p>
+                    <p className={`text-xs ${theme.textMuted}`}>{isDarkMode ? 'Dark Mode' : 'Light Mode'}</p>
+                  </div>
+                </div>
               </button>
+
               <button
-                onClick={() => setChartType('pie')}
-                className={`p-2 rounded-md transition-all ${chartType === 'pie' ? (isDarkMode ? 'bg-slate-700 text-white shadow-sm' : 'bg-white text-indigo-600 shadow-sm') : 'text-slate-400 hover:text-slate-600'}`}
-                title="Pie Chart"
+                onClick={() => setShowResetModal(true)}
+                className={`w-full p-4 flex items-center justify-between border-b ${theme.border} hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors`}
               >
-                <PieChartIcon className="w-4 h-4" />
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400">
+                    <RotateCcw className="w-5 h-5" />
+                  </div>
+                  <div className="text-left">
+                    <p className="font-bold">Reset Data</p>
+                    <p className={`text-xs ${theme.textMuted}`}>Clear all transactions</p>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                onClick={handleLogout}
+                className={`w-full p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-red-500`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400">
+                    <LogOut className="w-5 h-5" />
+                  </div>
+                  <div className="text-left">
+                    <p className="font-bold">Sign Out</p>
+                    <p className="text-xs opacity-70">Log out of your account</p>
+                  </div>
+                </div>
               </button>
             </div>
-          </div>
 
-          <div className="h-[300px] w-full relative">
-            {chartData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                {chartType === 'pie' ? (
-                  <PieChart>
-                    <Pie
-                      data={chartData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={80}
-                      paddingAngle={5}
-                      dataKey="value"
-                      stroke="none"
-                    >
-                      {chartData.map((entry, index) => {
-                        // Explicit check for 'Loan' to use the Amber color
-                        if (entry.name === 'Loan') return <Cell key={`cell-${index}`} fill="#f59e0b" />;
-
-                        const cat = categories.find(c => c.name === entry.name);
-                        return (
-                          <Cell key={`cell-${index}`} fill={cat ? cat.color : '#ccc'} />
-                        );
-                      })}
-                    </Pie>
-                    <RechartsTooltip
-                      formatter={(value: number) => formatCurrency(value)}
-                      contentStyle={{
-                        backgroundColor: isDarkMode ? '#1e293b' : '#fff',
-                        color: isDarkMode ? '#fff' : '#000',
-                        borderRadius: '8px',
-                        border: 'none',
-                        boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
-                      }}
-                    />
-                    <Legend
-                      formatter={(value) => <span style={{ color: isDarkMode ? '#cbd5e1' : '#475569' }}>{value}</span>}
-                    />
-                  </PieChart>
-                ) : (
-                  <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 50 }}>
-                    <XAxis
-                      dataKey="name"
-                      axisLine={false}
-                      tickLine={false}
-                      tick={{ fill: isDarkMode ? '#94a3b8' : '#64748b', fontSize: 11 }}
-                      dy={10}
-                      interval={0}
-                    />
-                    <RechartsTooltip
-                      formatter={(value: number) => formatCurrency(value)}
-                      cursor={{ fill: isDarkMode ? '#334155' : '#f1f5f9', opacity: 0.4 }}
-                      contentStyle={{
-                        backgroundColor: isDarkMode ? '#1e293b' : '#fff',
-                        color: isDarkMode ? '#fff' : '#000',
-                        borderRadius: '8px',
-                        border: 'none',
-                        boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
-                      }}
-                    />
-                    <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                      {chartData.map((entry, index) => {
-                        // Explicit check for 'Loan' to use the Amber color
-                        if (entry.name === 'Loan') return <Cell key={`cell-${index}`} fill="#f59e0b" />;
-
-                        const cat = categories.find(c => c.name === entry.name);
-                        return <Cell key={`cell-${index}`} fill={cat ? cat.color : '#ccc'} />;
-                      })}
-                    </Bar>
-                  </BarChart>
-                )}
-              </ResponsiveContainer>
-            ) : (
-              <div className={`absolute inset-0 flex items-center justify-center ${theme.textMuted} text-sm`}>
-                No data to display
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* TRANSACTION LIST */}
-        <div className={`${theme.cardBg} rounded-2xl shadow-sm border ${theme.border} overflow-hidden transition-colors duration-300`}>
-          {/* UPDATED HEADER with Filters */}
-          <div className={`p-4 border-b ${theme.border} flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between`}>
-            <h2 className="text-lg font-bold">Transactions</h2>
-
-            {/* Filter Tabs */}
-            <div className={`flex p-1 rounded-xl border ${theme.border} ${isDarkMode ? 'bg-slate-800' : 'bg-slate-100'} w-full sm:w-auto`}>
-              <button
-                onClick={() => setFilterType('all')}
-                className={`flex-1 sm:flex-none px-4 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${filterType === 'all' ? (isDarkMode ? 'bg-slate-700 text-white shadow-sm' : 'bg-white text-indigo-600 shadow-sm') : 'text-slate-500 hover:text-slate-400'}`}
-              >
-                <Layers className="w-3 h-3" />
-                All
-              </button>
-              <button
-                onClick={() => setFilterType('expense')}
-                className={`flex-1 sm:flex-none px-4 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${filterType === 'expense' ? (isDarkMode ? 'bg-slate-700 text-white shadow-sm' : 'bg-white text-indigo-600 shadow-sm') : 'text-slate-500 hover:text-slate-400'}`}
-              >
-                <Receipt className="w-3 h-3" />
-                Expenses
-              </button>
-              <button
-                onClick={() => setFilterType('loan')}
-                className={`flex-1 sm:flex-none px-4 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${filterType === 'loan' ? (isDarkMode ? 'bg-slate-700 text-amber-500 shadow-sm' : 'bg-white text-amber-600 shadow-sm') : 'text-slate-500 hover:text-slate-400'}`}
-              >
-                <Handshake className="w-3 h-3" />
-                Loans
-              </button>
+            <div className="text-center text-xs text-slate-400 mt-8">
+              v1.2.0 • Mobile Optimized
             </div>
           </div>
+        )}
 
-          <div className={`divide-y ${isDarkMode ? 'divide-slate-700' : 'divide-slate-100'}`}>
-            {filteredExpenses.length === 0 ? (
-              <div className={`p-12 text-center ${theme.textMuted}`}>
-                {filterType === 'loan' ? (
-                  <>
-                    <Handshake className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                    <p>No active loans found</p>
-                  </>
-                ) : (
-                  <>
-                    <PieChartIcon className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                    <p>No expenses found for {MONTHS[selectedMonth]}</p>
-                  </>
-                )}
+        {/* --- DASHBOARD VIEW --- */}
+        {(activeTab === 'dashboard' || activeTab === 'history') && (
+          <div className="space-y-6">
+            {/* Top Actions & Salary Button */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <h2 className="text-2xl font-bold">Dashboard</h2>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button
+                  onClick={() => setShowAddExpenseModal(true)}
+                  className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 ${isDarkMode ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-slate-900 hover:bg-slate-800'} text-white rounded-lg transition-colors shadow-sm font-medium`}
+                >
+                  <Plus className="w-4 h-4" />
+                  Add New
+                </button>
+                <button
+                  onClick={() => {
+                    setTempSalary(salary === 0 ? '' : salary.toString());
+                    setShowSalaryModal(true);
+                  }}
+                  className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 ${theme.cardBg} border ${theme.border} rounded-lg hover:border-indigo-500 transition-all shadow-sm font-medium`}
+                >
+                  <Settings className="w-4 h-4" />
+                  Set Salary
+                </button>
               </div>
-            ) : (
-              filteredExpenses.map((expense) => {
-                const isLoan = expense.type === 'loan';
-                const isReturned = expense.isReturned;
+            </div>
 
-                // Determine display properties based on expense type
-                let categoryColor = '#64748b';
-                let iconKey = 'MoreHorizontal';
+            {/* Stats Cards */}
+            {/* UPDATED: Uses dashboardStats (Strictly Month Based) */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className={`${theme.cardBg} p-4 sm:p-6 rounded-2xl shadow-sm border ${theme.border} transition-colors duration-300`}>
+                <div className="flex justify-between items-start mb-4">
+                  <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg text-emerald-600 dark:text-emerald-400">
+                    <DollarSign className="w-5 h-5" />
+                  </div>
+                </div>
+                <div>
+                  <p className={`text-sm font-medium ${theme.textMuted} mb-1`}>Monthly Income</p>
+                  <p className="text-2xl font-bold">{formatCurrency(salary)}</p>
+                </div>
+              </div>
 
-                if (isLoan) {
-                  categoryColor = '#f59e0b'; // Amber for loans
-                  iconKey = 'Handshake';
-                } else {
-                  const category = categories.find(c => c.name === expense.category);
-                  if (category) {
-                    categoryColor = category.color;
-                    iconKey = category.icon;
-                  }
-                }
+              <div className={`${theme.cardBg} p-4 sm:p-6 rounded-2xl shadow-sm border ${theme.border} transition-colors duration-300`}>
+                <div className="flex justify-between items-start mb-4">
+                  <div className="p-2 bg-rose-100 dark:bg-rose-900/30 rounded-lg text-rose-600 dark:text-rose-400">
+                    <TrendingDown className="w-5 h-5" />
+                  </div>
+                </div>
+                <div>
+                  <p className={`text-sm font-medium ${theme.textMuted} mb-1`}>Total Spent</p>
+                  <p className="text-2xl font-bold text-rose-600 dark:text-rose-400">{formatCurrency(dashboardStats.totalSpent)}</p>
+                </div>
+              </div>
 
-                const isEditing = editingId === expense.id;
+              <div className={`${theme.cardBg} p-4 sm:p-6 rounded-2xl shadow-sm border ${theme.border} transition-colors duration-300`}>
+                <div className="flex justify-between items-start mb-4">
+                  <div className="p-2 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg text-indigo-600 dark:text-indigo-400">
+                    <Wallet className="w-5 h-5" />
+                  </div>
+                </div>
+                <div>
+                  <p className={`text-sm font-medium ${theme.textMuted} mb-1`}>Remaining Balance</p>
+                  <p className={`text-2xl font-bold ${dashboardStats.remaining < 0 ? 'text-red-500' :
+                    dashboardStats.remaining > 0 ? 'text-emerald-500' : theme.text
+                    }`}>
+                    {formatCurrency(dashboardStats.remaining)}
+                  </p>
+                </div>
+              </div>
+            </div>
 
-                return (
-                  <div key={expense.id} className={`p-4 ${theme.hoverBg} flex items-center justify-between group transition-colors min-h-[88px] ${isReturned ? 'opacity-50' : ''}`}>
-                    {isEditing ? (
-                      // EDIT MODE (unchanged)
-                      <div className="flex items-center gap-2 w-full">
-                        <div className="flex-1 space-y-2">
-                          <input
-                            value={editValues.description}
-                            onChange={(e) => setEditValues({ ...editValues, description: e.target.value })}
-                            className={`w-full px-2 py-1 text-sm border ${theme.border} rounded ${theme.inputBg} ${theme.text} focus:outline-none focus:ring-1 focus:ring-indigo-500`}
-                            placeholder="Description"
-                            autoFocus
-                          />
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={editValues.amount}
-                            onChange={(e) => setEditValues({ ...editValues, amount: e.target.value })}
-                            className={`w-full px-2 py-1 text-sm border ${theme.border} rounded ${theme.inputBg} ${theme.text} focus:outline-none focus:ring-1 focus:ring-indigo-500`}
-                            placeholder="Amount"
-                          />
-                        </div>
-                        <div className="flex gap-1">
-                          <button
-                            onClick={saveEdit}
-                            className="p-2 bg-indigo-100 text-indigo-600 rounded-lg hover:bg-indigo-200"
-                          >
-                            <Check className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={cancelEditing}
-                            className="p-2 bg-slate-100 text-slate-500 rounded-lg hover:bg-slate-200"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
+            {/* SPENDING BREAKDOWN */}
+            {/* Uses chartData (Respects Filters) */}
+            <div className={`${theme.cardBg} p-4 sm:p-6 rounded-2xl shadow-sm border ${theme.border} transition-colors duration-300`}>
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-bold">Spending Breakdown</h3>
+                <div className={`flex p-1 rounded-lg border ${theme.border} ${isDarkMode ? 'bg-slate-800' : 'bg-slate-100'}`}>
+                  <button
+                    onClick={() => setChartType('bar')}
+                    className={`p-2 rounded-md transition-all ${chartType === 'bar' ? (isDarkMode ? 'bg-slate-700 text-white shadow-sm' : 'bg-white text-indigo-600 shadow-sm') : 'text-slate-400 hover:text-slate-600'}`}
+                    title="Bar Chart"
+                  >
+                    <BarChart3 className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setChartType('pie')}
+                    className={`p-2 rounded-md transition-all ${chartType === 'pie' ? (isDarkMode ? 'bg-slate-700 text-white shadow-sm' : 'bg-white text-indigo-600 shadow-sm') : 'text-slate-400 hover:text-slate-600'}`}
+                    title="Pie Chart"
+                  >
+                    <PieChartIcon className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="h-[300px] w-full relative">
+                {chartData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    {chartType === 'pie' ? (
+                      <PieChart>
+                        <Pie
+                          data={chartData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={60}
+                          outerRadius={80}
+                          paddingAngle={5}
+                          dataKey="value"
+                          stroke="none"
+                        >
+                          {chartData.map((entry, index) => {
+                            // Explicit check for 'Loan' to use the Amber color
+                            if (entry.name === 'Loan') return <Cell key={`cell-${index}`} fill="#f59e0b" />;
+
+                            const cat = categories.find(c => c.name === entry.name);
+                            return (
+                              <Cell key={`cell-${index}`} fill={cat ? cat.color : '#ccc'} />
+                            );
+                          })}
+                        </Pie>
+                        <RechartsTooltip
+                          formatter={(value: number) => formatCurrency(value)}
+                          contentStyle={{
+                            backgroundColor: isDarkMode ? '#1e293b' : '#fff',
+                            color: isDarkMode ? '#fff' : '#000',
+                            borderRadius: '8px',
+                            border: 'none',
+                            boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
+                          }}
+                        />
+                        <Legend
+                          formatter={(value) => <span style={{ color: isDarkMode ? '#cbd5e1' : '#475569' }}>{value}</span>}
+                        />
+                      </PieChart>
                     ) : (
-                      // NORMAL VIEW
+                      <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 50 }}>
+                        <XAxis
+                          dataKey="name"
+                          axisLine={false}
+                          tickLine={false}
+                          tick={{ fill: isDarkMode ? '#94a3b8' : '#64748b', fontSize: 11 }}
+                          dy={10}
+                          interval={0}
+                        />
+                        <RechartsTooltip
+                          formatter={(value: number) => formatCurrency(value)}
+                          cursor={{ fill: isDarkMode ? '#334155' : '#f1f5f9', opacity: 0.4 }}
+                          contentStyle={{
+                            backgroundColor: isDarkMode ? '#1e293b' : '#fff',
+                            color: isDarkMode ? '#fff' : '#000',
+                            borderRadius: '8px',
+                            border: 'none',
+                            boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
+                          }}
+                        />
+                        <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                          {chartData.map((entry, index) => {
+                            // Explicit check for 'Loan' to use the Amber color
+                            if (entry.name === 'Loan') return <Cell key={`cell-${index}`} fill="#f59e0b" />;
+
+                            const cat = categories.find(c => c.name === entry.name);
+                            return <Cell key={`cell-${index}`} fill={cat ? cat.color : '#ccc'} />;
+                          })}
+                        </Bar>
+                      </BarChart>
+                    )}
+                  </ResponsiveContainer>
+                ) : (
+                  <div className={`absolute inset-0 flex items-center justify-center ${theme.textMuted} text-sm`}>
+                    No data to display
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* TRANSACTION LIST */}
+            <div className={`${theme.cardBg} rounded-2xl shadow-sm border ${theme.border} overflow-hidden transition-colors duration-300`}>
+              {/* UPDATED HEADER with Filters */}
+              <div className={`p-4 border-b ${theme.border} flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between`}>
+                <h2 className="text-lg font-bold">Transactions</h2>
+
+                {/* Filter Tabs */}
+                <div className={`flex p-1 rounded-xl border ${theme.border} ${isDarkMode ? 'bg-slate-800' : 'bg-slate-100'} w-full sm:w-auto`}>
+                  <button
+                    onClick={() => setFilterType('all')}
+                    className={`flex-1 sm:flex-none px-4 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${filterType === 'all' ? (isDarkMode ? 'bg-slate-700 text-white shadow-sm' : 'bg-white text-indigo-600 shadow-sm') : 'text-slate-500 hover:text-slate-400'}`}
+                  >
+                    <Layers className="w-3 h-3" />
+                    All
+                  </button>
+                  <button
+                    onClick={() => setFilterType('expense')}
+                    className={`flex-1 sm:flex-none px-4 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${filterType === 'expense' ? (isDarkMode ? 'bg-slate-700 text-white shadow-sm' : 'bg-white text-indigo-600 shadow-sm') : 'text-slate-500 hover:text-slate-400'}`}
+                  >
+                    <Receipt className="w-3 h-3" />
+                    Expenses
+                  </button>
+                  <button
+                    onClick={() => setFilterType('loan')}
+                    className={`flex-1 sm:flex-none px-4 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${filterType === 'loan' ? (isDarkMode ? 'bg-slate-700 text-amber-500 shadow-sm' : 'bg-white text-amber-600 shadow-sm') : 'text-slate-500 hover:text-slate-400'}`}
+                  >
+                    <Handshake className="w-3 h-3" />
+                    Loans
+                  </button>
+                </div>
+              </div>
+
+              <div className={`divide-y ${isDarkMode ? 'divide-slate-700' : 'divide-slate-100'}`}>
+                {filteredExpenses.length === 0 ? (
+                  <div className={`p-12 text-center ${theme.textMuted}`}>
+                    {filterType === 'loan' ? (
                       <>
-                        <div className="flex items-center gap-4 flex-1 min-w-0 overflow-hidden">
-                          <div
-                            className={`w-10 h-10 rounded-full flex items-center justify-center text-white shrink-0 shadow-sm ${isLoan && isReturned ? 'bg-green-500' : ''}`}
-                            style={{ backgroundColor: isLoan && isReturned ? undefined : categoryColor }}
-                          >
-                            {isLoan && isReturned ? <Check className="w-5 h-5" /> : renderIcon(iconKey, "w-5 h-5")}
-                          </div>
-                          <div className="overflow-hidden">
-                            <p className={`font-medium ${theme.text} truncate ${isReturned ? 'line-through' : ''}`}>
-                              {expense.description}
-                            </p>
-                            <div className={`flex items-center gap-2 text-xs ${theme.textMuted}`}>
-                              <Calendar className="w-3 h-3" />
-                              {new Date(expense.date).toLocaleDateString()}
-                              <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
-                              <span>{isLoan ? (isReturned ? 'Loan Returned' : 'Loan (Pending)') : expense.category}</span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-
-                          <div className="hidden group-hover:flex gap-1 transition-opacity">
-                            {/* Loan Return Button */}
-                            {isLoan && !isReturned && (
-                              <button
-                                onClick={() => handleToggleLoanReturn(expense)}
-                                className={`p-2 bg-emerald-100 text-emerald-600 hover:bg-emerald-200 rounded-lg transition-all`}
-                                title="Mark as Returned"
-                              >
-                                <Undo2 className="w-4 h-4" />
-                              </button>
-                            )}
-
-                            <button
-                              onClick={() => startEditing(expense)}
-                              className={`p-2 ${isDarkMode ? 'text-slate-400 hover:text-indigo-400 hover:bg-slate-700' : 'text-slate-300 hover:text-indigo-500 hover:bg-indigo-50'} rounded-lg transition-all`}
-                              title="Edit"
-                            >
-                              <Pencil className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteExpense(expense.id)}
-                              className={`p-2 ${isDarkMode ? 'text-slate-400 hover:text-red-400 hover:bg-slate-700' : 'text-slate-300 hover:text-red-500 hover:bg-red-50'} rounded-lg transition-all`}
-                              title="Delete"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-
-                          <span className={`font-bold whitespace-nowrap text-right ${isReturned ? 'text-emerald-500 line-through decoration-slate-500' : theme.text}`}>
-                            -{formatCurrency(expense.amount)}
-                          </span>
-                        </div>
+                        <Handshake className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                        <p>No active loans found</p>
+                      </>
+                    ) : (
+                      <>
+                        <PieChartIcon className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                        <p>No expenses found for {MONTHS[selectedMonth]}</p>
                       </>
                     )}
                   </div>
-                );
-              })
-            )}
+                ) : (
+                  filteredExpenses.map((expense) => {
+                    const isLoan = expense.type === 'loan';
+                    const isReturned = expense.isReturned;
+
+                    // Determine display properties based on expense type
+                    let categoryColor = '#64748b';
+                    let iconKey = 'MoreHorizontal';
+
+                    if (isLoan) {
+                      categoryColor = '#f59e0b'; // Amber for loans
+                      iconKey = 'Handshake';
+                    } else if (expense.type === 'income') {
+                      categoryColor = '#10b981'; // Emerald-500 for income
+                      iconKey = 'Banknote';
+                    } else {
+                      const category = categories.find(c => c.name === expense.category);
+                      if (category) {
+                        categoryColor = category.color;
+                        iconKey = category.icon;
+                      }
+                    }
+
+                    const isEditing = editingId === expense.id;
+
+                    return (
+                      <div key={expense.id} className={`p-4 ${theme.hoverBg} flex items-center justify-between group transition-colors min-h-[88px] ${isReturned ? 'opacity-50' : ''}`}>
+                        {isEditing ? (
+                          // EDIT MODE (unchanged)
+                          <div className="flex items-center gap-2 w-full">
+                            <div className="flex-1 space-y-2">
+                              <input
+                                value={editValues.description}
+                                onChange={(e) => setEditValues({ ...editValues, description: e.target.value })}
+                                className={`w-full px-2 py-1 text-sm border ${theme.border} rounded ${theme.inputBg} ${theme.text} focus:outline-none focus:ring-1 focus:ring-indigo-500`}
+                                placeholder="Description"
+                                autoFocus
+                              />
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={editValues.amount}
+                                onChange={(e) => setEditValues({ ...editValues, amount: e.target.value })}
+                                className={`w-full px-2 py-1 text-sm border ${theme.border} rounded ${theme.inputBg} ${theme.text} focus:outline-none focus:ring-1 focus:ring-indigo-500`}
+                                placeholder="Amount"
+                              />
+                            </div>
+                            <div className="flex gap-1">
+                              <button
+                                onClick={saveEdit}
+                                className="p-2 bg-indigo-100 text-indigo-600 rounded-lg hover:bg-indigo-200"
+                              >
+                                <Check className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={cancelEditing}
+                                className="p-2 bg-slate-100 text-slate-500 rounded-lg hover:bg-slate-200"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          // NORMAL VIEW
+                          <>
+                            <div className="flex items-center gap-4 flex-1 min-w-0 overflow-hidden">
+                              <div
+                                className={`w-10 h-10 rounded-full flex items-center justify-center text-white shrink-0 shadow-sm ${isLoan && isReturned ? 'bg-green-500' : ''}`}
+                                style={{ backgroundColor: isLoan && isReturned ? undefined : categoryColor }}
+                              >
+                                {isLoan && isReturned ? <Check className="w-5 h-5" /> : renderIcon(iconKey, "w-5 h-5")}
+                              </div>
+                              <div className="overflow-hidden">
+                                <p className={`font-medium ${theme.text} truncate ${isReturned ? 'line-through' : ''}`}>
+                                  {expense.description}
+                                </p>
+                                <div className={`flex items-center gap-2 text-xs ${theme.textMuted}`}>
+                                  <Calendar className="w-3 h-3" />
+                                  {new Date(expense.date).toLocaleDateString()}
+                                  <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
+                                  <span>{isLoan ? (isReturned ? 'Loan Returned' : 'Loan (Pending)') : expense.category}</span>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+
+                              {/* Loan Return Button - Always Visible for active loans */}
+                              {isLoan && !isReturned && (
+                                <button
+                                  onClick={() => handleOpenRepayment(expense)}
+                                  className={`p-2 bg-emerald-100 text-emerald-600 hover:bg-emerald-200 rounded-lg transition-all mr-2`}
+                                  title="Add Repayment"
+                                >
+                                  <Undo2 className="w-4 h-4" />
+                                </button>
+                              )}
+
+                              {/* Desktop Actions (Hover) */}
+                              <div className="hidden md:flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button
+                                  onClick={() => startEditing(expense)}
+                                  className={`p-2 ${isDarkMode ? 'text-slate-400 hover:text-indigo-400 hover:bg-slate-700' : 'text-slate-300 hover:text-indigo-500 hover:bg-indigo-50'} rounded-lg transition-all`}
+                                  title="Edit"
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteExpense(expense.id)}
+                                  className={`p-2 ${isDarkMode ? 'text-slate-400 hover:text-red-400 hover:bg-slate-700' : 'text-slate-300 hover:text-red-500 hover:bg-red-50'} rounded-lg transition-all`}
+                                  title="Delete"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+
+                              {/* Mobile Action Menu Trigger */}
+                              <button
+                                onClick={() => {
+                                  setSelectedActionExpense(expense);
+                                  setShowActionSheet(true);
+                                }}
+                                className="md:hidden p-2 text-slate-400"
+                              >
+                                <MoreVertical className="w-5 h-5" />
+                              </button>
+
+                              <div className="flex flex-col items-end">
+                                <span className={`font-bold whitespace-nowrap text-right ${isReturned ? 'text-emerald-500 line-through decoration-slate-500' :
+                                  expense.type === 'income' ? 'text-emerald-500' : 'text-red-500'
+                                  }`}>
+                                  {expense.type === 'income' ? '+' : '-'}
+                                  {formatCurrency(isLoan && !isReturned && (expense.returnedAmount || 0) > 0
+                                    ? expense.amount - (expense.returnedAmount || 0)
+                                    : expense.amount)}
+                                </span>
+                                {isLoan && !isReturned && (expense.returnedAmount || 0) > 0 && (
+                                  <span className="text-[10px] text-emerald-500 font-medium">
+                                    {formatCurrency(expense.returnedAmount || 0)} repaid
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
           </div>
-        </div>
+        )}
+
       </main>
 
       {/* --- MODALS --- */}
@@ -1162,6 +1338,12 @@ export default function App() {
                 className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${transactionType === 'loan' ? 'bg-white dark:bg-slate-700 shadow text-amber-500 dark:text-amber-400' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'}`}
               >
                 Lend Money
+              </button>
+              <button
+                onClick={() => setTransactionType('income')}
+                className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${transactionType === 'income' ? 'bg-white dark:bg-slate-700 shadow text-emerald-500 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'}`}
+              >
+                Income
               </button>
             </div>
 
@@ -1210,14 +1392,16 @@ export default function App() {
                 </div>
               ) : (
                 <div className="md:col-span-1">
-                  <label className={`block text-xs font-semibold ${theme.textMuted} uppercase mb-1`}>Friend Name</label>
+                  <label className={`block text-xs font-semibold ${theme.textMuted} uppercase mb-1`}>
+                    {transactionType === 'income' ? 'Source' : 'Friend Name'}
+                  </label>
                   <input
                     type="text"
                     required
                     value={newExpense.description} // Using description field to store friend name
                     onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })}
-                    className={`w-full px-4 py-2 rounded-lg border ${theme.border} ${theme.inputBg} ${theme.text} focus:ring-2 focus:ring-amber-500 outline-none transition-all`}
-                    placeholder="Who are you lending to?"
+                    className={`w-full px-4 py-2 rounded-lg border ${theme.border} ${theme.inputBg} ${theme.text} focus:ring-2 ${transactionType === 'income' ? 'focus:ring-emerald-500' : 'focus:ring-amber-500'} outline-none transition-all`}
+                    placeholder={transactionType === 'income' ? "E.g. Freelance, Gift" : "Who are you lending to?"}
                   />
                 </div>
               )}
@@ -1252,9 +1436,12 @@ export default function App() {
               <div className="md:col-span-2 pt-2">
                 <button
                   type="submit"
-                  className={`w-full py-2 text-white font-medium rounded-lg transition-colors shadow-lg shadow-indigo-500/20 ${transactionType === 'expense' ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-amber-500 hover:bg-amber-600'}`}
+                  className={`w-full py-2 text-white font-medium rounded-lg transition-colors shadow-lg shadow-indigo-500/20 
+                    ${transactionType === 'expense' ? 'bg-indigo-600 hover:bg-indigo-700' :
+                      transactionType === 'income' ? 'bg-emerald-600 hover:bg-emerald-700' :
+                        'bg-amber-500 hover:bg-amber-600'}`}
                 >
-                  Save {transactionType === 'expense' ? 'Transaction' : 'Loan'}
+                  Save {transactionType === 'expense' ? 'Transaction' : (transactionType === 'income' ? 'Income' : 'Loan')}
                 </button>
               </div>
             </form>
@@ -1427,6 +1614,224 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* History Modal */}
+      {showHistoryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 transition-opacity duration-300" style={{ backgroundColor: theme.modalOverlay }}>
+          <div className={`w-full max-w-2xl h-[80vh] flex flex-col p-6 rounded-2xl shadow-xl ${theme.cardBg} border ${theme.border} transform transition-all scale-100`}>
+            <div className="flex justify-between items-center mb-6">
+              <div className="flex items-center gap-2">
+                <div className="bg-indigo-100 dark:bg-indigo-900/30 p-2 rounded-lg text-indigo-600">
+                  <CalendarDays className="w-6 h-6" />
+                </div>
+                <h3 className="text-xl font-bold">History / Daily View</h3>
+              </div>
+              <button onClick={() => setShowHistoryModal(false)} className={`p-2 rounded-lg ${theme.hoverBg}`}>
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-4 pr-2">
+              {Object.entries(
+                expenses.reduce((acc, curr) => {
+                  const date = curr.date;
+                  if (!acc[date]) acc[date] = [];
+                  acc[date].push(curr);
+                  return acc;
+                }, {} as Record<string, Expense[]>)
+              ).sort((a, b) => new Date(b[0]).getTime() - new Date(a[0]).getTime())
+                .map(([date, dayExpenses]) => {
+                  const dayTotal = dayExpenses.reduce((sum, e) => {
+                    if (e.type === 'income') return sum;
+                    if (e.type === 'loan') return sum + (e.amount - (e.returnedAmount || (e.isReturned ? e.amount : 0)));
+                    return sum + e.amount;
+                  }, 0);
+
+                  const dayIncome = dayExpenses.reduce((sum, e) => (e.type === 'income' ? sum + e.amount : sum), 0);
+
+                  return (
+                    <div key={date} className={`border ${theme.border} rounded-xl overflow-hidden`}>
+                      <div className={`p-3 flex justify-between items-center ${isDarkMode ? 'bg-slate-700/50' : 'bg-slate-50'}`}>
+                        <span className={`font-bold flex items-center gap-2 ${theme.text}`}>
+                          <Calendar className="w-4 h-4 opacity-50" /> {new Date(date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                        </span>
+                        <div className="text-sm font-medium">
+                          {dayIncome > 0 && <span className="text-emerald-500 mr-3">+{formatCurrency(dayIncome)}</span>}
+                          {dayTotal > 0 && <span className="text-red-500">-{formatCurrency(dayTotal)}</span>}
+                        </div>
+                      </div>
+                      <div className="divide-y divide-slate-100 dark:divide-slate-700">
+                        {dayExpenses.map(exp => (
+                          <div key={exp.id} className={`p-3 flex justify-between items-center ${theme.cardBg} ${theme.text}`}>
+                            <div className="flex items-center gap-3">
+                              <div className={`w-2 h-2 rounded-full ${exp.type === 'income' ? 'bg-emerald-500' : (exp.type === 'loan' ? 'bg-amber-500' : 'bg-indigo-500')}`}></div>
+                              <div>
+                                <p className="text-sm font-semibold">{exp.description}</p>
+                                <p className="text-xs opacity-50 capitalize">{exp.category}</p>
+                              </div>
+                            </div>
+                            <span className={`text-sm font-bold ${exp.type === 'income' ? 'text-emerald-500' : ''}`}>
+                              {exp.type === 'income' ? '+' : ''}{formatCurrency(exp.amount)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+
+              {expenses.length === 0 && (
+                <div className="text-center py-12 opacity-50">
+                  <p>No history available.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Repayment Modal */}
+      {showRepaymentModal && selectedLoan && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 transition-opacity duration-300" style={{ backgroundColor: theme.modalOverlay }}>
+          <div className={`w-full max-w-sm p-6 rounded-2xl shadow-xl ${theme.cardBg} border ${theme.border} transform transition-all scale-100`}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold">Add Repayment</h3>
+              <button onClick={() => setShowRepaymentModal(false)} className={`p-1 rounded-lg ${theme.hoverBg}`}>
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className={`text-sm ${theme.textMuted} mb-4`}>
+              Adding repayment for loan: <span className="font-bold text-indigo-500">{selectedLoan.description}</span>
+            </p>
+
+            <p className="text-xs font-semibold mb-2">
+              Total Loan: {formatCurrency(selectedLoan.amount)}<br />
+              Remaining: {formatCurrency(selectedLoan.amount - (selectedLoan.returnedAmount || 0))}
+            </p>
+
+            <form onSubmit={handleAddRepayment} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold uppercase mb-1">Amount Returned</label>
+                <div className="relative">
+                  <span className={`absolute left-4 top-1/2 -translate-y-1/2 font-bold ${theme.textMuted}`}>DH</span>
+                  <input
+                    type="number"
+                    required
+                    min="0.01"
+                    step="0.01"
+                    max={selectedLoan.amount - (selectedLoan.returnedAmount || 0)}
+                    value={repaymentAmount}
+                    onChange={(e) => setRepaymentAmount(e.target.value)}
+                    className={`w-full pl-12 pr-4 py-3 rounded-xl border ${theme.border} ${theme.inputBg} ${theme.text} focus:ring-2 focus:ring-indigo-500 outline-none`}
+                    placeholder="0.00"
+                    autoFocus
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-500/20"
+              >
+                Confirm Repayment
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* --- MOBILE OPTIMIZATIONS --- */}
+
+      {/* 1. Mobile Action Sheet (Replaces Hover Menu) */}
+      {showActionSheet && selectedActionExpense && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center md:hidden">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowActionSheet(false)} />
+          <div className={`relative w-full ${theme.cardBg} rounded-t-2xl p-6 space-y-4 animate-in slide-in-from-bottom-full duration-200`}>
+            <div className="w-12 h-1 bg-slate-300 rounded-full mx-auto mb-4" />
+
+            <h3 className="text-lg font-bold mb-2">Manage Transaction</h3>
+
+            <button
+              onClick={() => {
+                startEditing(selectedActionExpense);
+                setShowActionSheet(false);
+              }}
+              className={`w-full p-4 rounded-xl flex items-center gap-3 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-100'} font-medium`}
+            >
+              <Pencil className="w-5 h-5 text-indigo-500" />
+              Edit Transaction
+            </button>
+
+            {selectedActionExpense.type === 'loan' && !selectedActionExpense.isReturned && (
+              <button
+                onClick={() => {
+                  handleOpenRepayment(selectedActionExpense);
+                  setShowActionSheet(false);
+                }}
+                className={`w-full p-4 rounded-xl flex items-center gap-3 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-100'} font-medium`}
+              >
+                <Handshake className="w-5 h-5 text-emerald-500" />
+                Add Repayment
+              </button>
+            )}
+
+            <button
+              onClick={() => {
+                handleDeleteExpense(selectedActionExpense.id);
+                setShowActionSheet(false);
+              }}
+              className={`w-full p-4 rounded-xl flex items-center gap-3 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-100'} text-red-500 font-medium`}
+            >
+              <Trash2 className="w-5 h-5" />
+              Delete Transaction
+            </button>
+
+            <button
+              onClick={() => setShowActionSheet(false)}
+              className="w-full p-4 rounded-xl font-bold bg-slate-200 dark:bg-slate-800 mt-2"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 2. Floating Action Button (FAB) */}
+      <button
+        onClick={() => setShowAddExpenseModal(true)}
+        className="fixed bottom-24 right-4 md:hidden w-14 h-14 bg-indigo-600 rounded-full shadow-lg shadow-indigo-600/30 flex items-center justify-center text-white z-40 active:scale-90 transition-transform"
+      >
+        <Plus className="w-8 h-8" />
+      </button>
+
+      {/* 3. Bottom Navigation Bar */}
+      <div className={`fixed bottom-0 left-0 right-0 h-20 ${theme.cardBg} border-t ${theme.border} md:hidden z-40 grid grid-cols-3 pb-safe`}>
+        <button
+          onClick={() => setActiveTab('dashboard')}
+          className={`flex flex-col items-center justify-center gap-1 ${activeTab === 'dashboard' ? 'text-indigo-500' : theme.textMuted}`}
+        >
+          <Home className="w-6 h-6" />
+          <span className="text-xs font-medium">Home</span>
+        </button>
+        <button
+          onClick={() => {
+            setActiveTab('history');
+            setShowHistoryModal(true);
+          }}
+          className={`flex flex-col items-center justify-center gap-1 ${activeTab === 'history' ? 'text-indigo-500' : theme.textMuted}`}
+        >
+          <History className="w-6 h-6" />
+          <span className="text-xs font-medium">History</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('settings')}
+          className={`flex flex-col items-center justify-center gap-1 ${activeTab === 'settings' ? 'text-indigo-500' : theme.textMuted}`}
+        >
+          <Settings className="w-6 h-6" />
+          <span className="text-xs font-medium">Settings</span>
+        </button>
+      </div>
 
     </div>
   );
