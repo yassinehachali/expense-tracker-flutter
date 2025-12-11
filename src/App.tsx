@@ -1246,7 +1246,7 @@ export default function App() {
                               {isLoan && !isReturned && (
                                 <button
                                   onClick={() => handleOpenRepayment(expense)}
-                                  className={`p-2 bg-emerald-100 text-emerald-600 hover:bg-emerald-200 rounded-lg transition-all mr-2`}
+                                  className={`hidden md:block p-2 bg-emerald-100 text-emerald-600 hover:bg-emerald-200 rounded-lg transition-all mr-2`}
                                   title="Add Repayment"
                                 >
                                   <Undo2 className="w-4 h-4" />
@@ -1653,7 +1653,7 @@ export default function App() {
                     <div key={date} className={`border ${theme.border} rounded-xl overflow-hidden`}>
                       <div className={`p-3 flex justify-between items-center ${isDarkMode ? 'bg-slate-700/50' : 'bg-slate-50'}`}>
                         <span className={`font-bold flex items-center gap-2 ${theme.text}`}>
-                          <Calendar className="w-4 h-4 opacity-50" /> {new Date(date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                          <Calendar className="w-4 h-4 opacity-50" /> {new Date(date).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric' })}
                         </span>
                         <div className="text-sm font-medium">
                           {dayIncome > 0 && <span className="text-emerald-500 mr-3">+{formatCurrency(dayIncome)}</span>}
