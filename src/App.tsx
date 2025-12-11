@@ -808,8 +808,8 @@ export default function App() {
       <header className={`${theme.cardBg} border-b ${theme.border} sticky top-0 z-10 transition-colors duration-300`}>
         <div className="max-w-[1600px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="bg-indigo-600 p-2 rounded-lg shadow-lg shadow-indigo-500/30">
-              <Wallet className="w-5 h-5 text-white" />
+            <div className="w-10 h-10 rounded-xl overflow-hidden shadow-lg shadow-indigo-500/30">
+              <img src="/logo.png?v=2" alt="BudgetTracker Logo" className="w-full h-full object-cover" />
             </div>
             <h1 className="text-xl font-bold hidden sm:block">BudgetTracker</h1>
           </div>
