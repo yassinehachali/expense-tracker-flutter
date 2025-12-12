@@ -56,6 +56,8 @@ class _LoginScreenState extends State<LoginScreen> {
     final isDark = theme.brightness == Brightness.dark;
     
     return Scaffold(
+      backgroundColor: isDark ? const Color(0xFF0f172a) : const Color(0xFFf3f4f6), // Match gradient end color
+      resizeToAvoidBottomInset: true,
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
