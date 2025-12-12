@@ -142,9 +142,24 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
               borderRadius: BorderRadius.circular(16),
               child: Row(
                 children: [
-                  _TypeTab(label: "Expense", isSelected: _selectedType == 'expense', onTap: () => setState(() => _selectedType = 'expense')),
-                  _TypeTab(label: "Loan", isSelected: _selectedType == 'loan', onTap: () => setState(() => _selectedType = 'loan')),
-                  _TypeTab(label: "Income", isSelected: _selectedType == 'income', onTap: () => setState(() => _selectedType = 'income')),
+                  _TypeTab(
+                    label: "Expense", 
+                    icon: LucideIcons.receipt, // or Banknote
+                    isSelected: _selectedType == 'expense', 
+                    onTap: () => setState(() => _selectedType = 'expense')
+                  ),
+                  _TypeTab(
+                    label: "Loan", 
+                    icon: Icons.handshake, 
+                    isSelected: _selectedType == 'loan', 
+                    onTap: () => setState(() => _selectedType = 'loan')
+                  ),
+                  _TypeTab(
+                    label: "Income", 
+                    icon: LucideIcons.wallet, 
+                    isSelected: _selectedType == 'income', 
+                    onTap: () => setState(() => _selectedType = 'income')
+                  ),
                 ],
               ),
             ),
@@ -276,10 +291,16 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
 class _TypeTab extends StatelessWidget {
   final String label;
+  final IconData icon; // Added icon
   final bool isSelected;
   final VoidCallback onTap;
 
-  const _TypeTab({required this.label, required this.isSelected, required this.onTap});
+  const _TypeTab({
+    required this.label, 
+    required this.icon, // Required now
+    required this.isSelected, 
+    required this.onTap
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -294,12 +315,19 @@ class _TypeTab extends StatelessWidget {
             border: isSelected ? Border.all(color: Colors.white24) : null,
           ),
           child: Column(
+             mainAxisAlignment: MainAxisAlignment.center,
              children: [
-               if (isSelected && label == "Expense") const Icon(LucideIcons.check, size: 14, color: Colors.white),
+               Icon(
+                 icon, // Use passed icon
+                 size: 20, 
+                 color: isSelected ? Colors.white : Colors.grey
+               ),
+               const SizedBox(height: 4),
                Text(
                  label, 
                  textAlign: TextAlign.center,
                  style: TextStyle(
+                   fontSize: 12,
                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                    color: isSelected ? Colors.white : Colors.grey,
                  ),

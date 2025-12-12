@@ -41,43 +41,42 @@ class _DashboardScreenState extends State<DashboardScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Header Row with Date Selectors
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isNarrow = constraints.maxWidth < 600;
+              
+              final headerTitle = Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(colors: [AppTheme.primary, AppTheme.primaryLight]),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(LucideIcons.wallet, color: Colors.white, size: 24),
+                  ),
+                  const SizedBox(width: 12),
+                  Flexible(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(colors: [AppTheme.primary, AppTheme.primaryLight]),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Icon(LucideIcons.wallet, color: Colors.white, size: 24),
+                        Text(
+                          'Expense Tracker',
+                          style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        const SizedBox(width: 12),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Expense Tracker',
-                              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-                            ),
-                            Text(
-                              'Welcome back',
-                              style: theme.textTheme.bodySmall,
-                            ),
-                          ],
+                        Text(
+                          'Welcome back',
+                          style: theme.textTheme.bodySmall,
                         ),
                       ],
                     ),
-                  ],
-                ),
-              ),
-              GlassContainer(
+                  ),
+                ],
+              );
+
+              final dateSelectors = GlassContainer(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 borderRadius: BorderRadius.circular(16),
                 child: Row(
@@ -110,7 +109,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
                       items: List.generate(5, (index) {
                         final year = DateTime.now().year - 2 + index; // e.g. 2023-2027
-                        return DropdownMenuItem(
+                         return DropdownMenuItem(
                           value: year,
                           child: Text(year.toString()),
                         );
@@ -121,8 +120,99 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   ],
                 ),
-              ),
-            ],
+              );
+
+              if (isNarrow) {
+                // Mobile Layout: Compact Single Row
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // Compact Title (Icon + Text)
+                    Expanded(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(6), // Smaller padding
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(colors: [AppTheme.primary, AppTheme.primaryLight]),
+                              borderRadius: BorderRadius.circular(8), // Smaller radius
+                            ),
+                            child: const Icon(LucideIcons.wallet, color: Colors.white, size: 18), // Smaller Icon
+                          ),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              'Expense Tracker',
+                              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold), // Smaller Text
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // Compact Date Selector
+                    GlassContainer(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), // Tighter padding
+                      borderRadius: BorderRadius.circular(12),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Month Dropdown (Smaller text)
+                          DropdownButton<int>(
+                            value: provider.selectedMonth,
+                            underline: Container(),
+                            icon: const Icon(Icons.keyboard_arrow_down, size: 14),
+                            isDense: true, // Reduces height
+                            style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.bold),
+                            items: List.generate(MONTHS.length, (index) {
+                              return DropdownMenuItem(
+                                value: index,
+                                child: Text(MONTHS[index].substring(0, 3)), // Short month name (Jan, Feb)
+                              );
+                            }),
+                            onChanged: (val) {
+                              if (val != null) provider.setMonth(val);
+                            },
+                          ),
+                          const SizedBox(width: 8),
+                          Container(height: 12, width: 1, color: theme.dividerColor),
+                          const SizedBox(width: 8),
+                          // Year Dropdown
+                          DropdownButton<int>(
+                            value: provider.selectedYear,
+                            underline: Container(),
+                            icon: const Icon(Icons.keyboard_arrow_down, size: 14),
+                            isDense: true,
+                            style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.bold),
+                            items: List.generate(5, (index) {
+                              final year = DateTime.now().year - 2 + index;
+                              return DropdownMenuItem(
+                                value: year,
+                                child: Text(year.toString()),
+                              );
+                            }),
+                            onChanged: (val) {
+                              if (val != null) provider.setYear(val);
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                );
+              } else {
+                // Desktop/Tablet Layout: Full Size
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(child: headerTitle),
+                    dateSelectors,
+                  ],
+                );
+              }
+            }
           ),
           const SizedBox(height: 24),
 
@@ -321,6 +411,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 Navigator.push(context, MaterialPageRoute(builder: (_) => AddExpenseScreen(expenseToEdit: expense)));
                               },
                             ),
+                            if (expense.type == 'loan' && !expense.isReturned)
+                              ListTile(
+                                leading: const Icon(LucideIcons.banknote, color: Colors.green),
+                                title: const Text("Record Repayment"),
+                                onTap: () {
+                                  Navigator.pop(ctx);
+                                  _showRepaymentDialog(context, expense, provider);
+                                },
+                              ),
                             ListTile(
                               leading: const Icon(Icons.delete, color: Colors.red),
                               title: const Text("Delete Transaction", style: TextStyle(color: Colors.red)),
@@ -454,6 +553,55 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
       
       return _CategoryDetails(name, value, color, iconKey);
+  }
+
+  void _showRepaymentDialog(BuildContext context, dynamic expense, ExpenseProvider provider) {
+    final controller = TextEditingController();
+    final remaining = expense.amount - expense.returnedAmount;
+    
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Record Repayment"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text("Total Loan: ${Utils.formatCurrency(expense.amount)}"),
+            Text("Remaining: ${Utils.formatCurrency(remaining)}"),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: "Amount Returned",
+                hintText: "Enter amount",
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.attach_money),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
+          ElevatedButton(
+            onPressed: () {
+              final val = double.tryParse(controller.text);
+              if (val == null || val <= 0) return;
+              if (val > remaining) {
+                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Amount cannot exceed remaining balance")));
+                 return;
+              }
+              
+              provider.updateRepayment(expense, val);
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Repaid ${Utils.formatCurrency(val)}")));
+            }, 
+            child: const Text("Confirm")
+          ),
+        ],
+      ),
+    );
   }
 }
 

@@ -31,9 +31,20 @@ class ExpenseProvider with ChangeNotifier {
   List<ExpenseModel> get expenses => _expenses;
   List<CategoryModel> get categories {
     final defaults = DEFAULT_CATEGORIES.map((c) => CategoryModel.fromMap(c)).toList();
-    // Return combined list, with custom ones first or last? 
-    // Usually defaults first.
-    return [...defaults, ..._categories];
+    // Combine and deduplicate by name, preferring user categories
+    final Map<String, CategoryModel> uniqueCategories = {};
+    
+    // Add defaults first
+    for (var c in defaults) {
+      uniqueCategories[c.name] = c;
+    }
+    
+    // Override/Add user categories
+    for (var c in _categories) {
+      uniqueCategories[c.name] = c;
+    }
+    
+    return uniqueCategories.values.toList();
   }
   double get salary => _salary;
   
