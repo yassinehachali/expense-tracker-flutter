@@ -128,6 +128,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     }
     
     return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor, // Ensure consistent background
       appBar: AppBar(
         title: Text(widget.expenseToEdit != null ? "Edit Transaction" : "Add Transaction"),
         centerTitle: true,
