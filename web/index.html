@@ -51,23 +51,27 @@
     }
   </style>
   <script>
-    // FIX: Lock the scroll, but DO NOT touch the height manually.
-    // Let Flutter handle the height.
-
-    function forceScrollTop() {
-      if (document.body.scrollTop !== 0 || document.documentElement.scrollTop !== 0) {
-        window.scrollTo(0, 0);
-      }
-    }
+    // FIX: Only reset scroll when the viewport RESIZES (keyboard opens/closes).
+    // do NOT force it on every scroll event, as that breaks input focus/clicking.
 
     if (window.visualViewport) {
-      // Just ensure we stay at 0,0 when the view resizes (keyboard open/close)
-      window.visualViewport.addEventListener('resize', forceScrollTop);
-      window.visualViewport.addEventListener('scroll', forceScrollTop);
+      window.visualViewport.addEventListener('resize', () => {
+        // When the keyboard opens/closes, the viewport height changes.
+        // We update the body height to match, preventing the "white space".
+        document.body.style.height = window.visualViewport.height + 'px';
+
+        // We only reset scroll ONCE when the resize happens.
+        requestAnimationFrame(() => {
+          window.scrollTo(0, 0);
+        });
+      });
     }
 
-    // Catch-all for standard window scrolling
-    window.addEventListener('scroll', forceScrollTop);
+    // Optional: Reset scroll on focus out to ensure we snap back
+    // but don't interfere with active scrolling/focusing.
+    document.addEventListener('focusout', () => {
+      setTimeout(() => window.scrollTo(0, 0), 100);
+    });
   </script>
 </head>
 
