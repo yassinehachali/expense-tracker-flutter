@@ -40,7 +40,7 @@ class _HomeScreenState extends State<HomeScreen> {
     ];
 
     return Scaffold(
-      resizeToAvoidBottomInset: false, // Critical for PWA overlay mode
+      // resizeToAvoidBottomInset: true, // Default is true, removing explicit false
       body: SafeArea(
         child: IndexedStack(
           index: _selectedIndex,
