@@ -33,11 +33,13 @@ class UserSettingsModel {
   final double defaultSalary;
   final int defaultStartDay;
   final Map<String, MonthlySettings> monthlyOverrides; // Key: "yyyy-MM"
+  final List<String> ignoredRollovers; // Key: "yyyy-MM" where rollover is disabled
 
   UserSettingsModel({
     this.defaultSalary = 0.0, 
     this.defaultStartDay = 1,
     this.monthlyOverrides = const {},
+    this.ignoredRollovers = const [],
   });
 
   factory UserSettingsModel.fromMap(Map<String, dynamic> map) {
@@ -47,11 +49,27 @@ class UserSettingsModel {
         overrides[key] = MonthlySettings.fromMap(value);
       });
     }
+    
+    final ignored = <String>[];
+    if (map['ignoredRollovers'] != null) {
+      ignored.addAll(List<String>.from(map['ignoredRollovers']));
+    }
 
     return UserSettingsModel(
       defaultSalary: (map['defaultSalary'] ?? map['salary'] ?? 0).toDouble(), // fallback for migration
       defaultStartDay: map['defaultStartDay'] ?? map['salaryDate'] ?? 1,
       monthlyOverrides: overrides,
+      ignoredRollovers: ignored,
     );
+  }
+  
+  Map<String, dynamic> toMap() {
+     // We only implementations for granular updates usually, but for completeness:
+     return {
+       'defaultSalary': defaultSalary,
+       'defaultStartDay': defaultStartDay,
+       'monthlyOverrides': monthlyOverrides.map((k, v) => MapEntry(k, v.toMap())),
+       'ignoredRollovers': ignoredRollovers,
+     };
   }
 }
