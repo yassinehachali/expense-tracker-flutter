@@ -53,6 +53,16 @@ class SettingsScreen extends StatelessWidget {
             },
           ),
           
+          if (auth.user?.email != null) // Only show for logged in users
+             ListTile(
+              leading: const Icon(LucideIcons.lock),
+              title: const Text('Change Password'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                _showChangePasswordDialog(context, auth);
+              },
+            ),
+
           const Divider(),
 
           // Danger Zone
@@ -77,6 +87,7 @@ class SettingsScreen extends StatelessWidget {
   }
 
   void _showSalaryDialog(BuildContext context, ExpenseProvider provider) {
+    // ... existing implementation ...
     final controller = TextEditingController(text: provider.salary.toString());
     showDialog(
       context: context,
@@ -96,6 +107,77 @@ class SettingsScreen extends StatelessWidget {
               if (ctx.mounted) Navigator.pop(ctx);
             }, 
             child: const Text("Save")
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showChangePasswordDialog(BuildContext context, AuthProvider auth) {
+    final currentPassController = TextEditingController();
+    final newPassController = TextEditingController();
+    final confirmPassController = TextEditingController();
+    
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Change Password"),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: currentPassController,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: "Current Password"),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: newPassController,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: "New Password"),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: confirmPassController,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: "Confirm New Password"),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
+          TextButton(
+            onPressed: () async {
+              final current = currentPassController.text;
+              final newPass = newPassController.text;
+              final confirm = confirmPassController.text;
+
+              if (newPass != confirm) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("New passwords do not match")));
+                return;
+              }
+              if (newPass.length < 6) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Password must be at least 6 characters")));
+                return;
+              }
+
+              try {
+                // Show loading indicator or handle state? 
+                // For simplicity in dialog, we await.
+                await auth.changePassword(current, newPass);
+                if (ctx.mounted) {
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Password updated successfully")));
+                }
+              } catch (e) {
+                if (ctx.mounted) {
+                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+                }
+              }
+            }, 
+            child: const Text("Update")
           ),
         ],
       ),

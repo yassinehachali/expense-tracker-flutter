@@ -27,7 +27,17 @@ class AuthProvider with ChangeNotifier {
     await _authService.signIn(email, password);
   }
 
+  Future<void> signUp(String email, String password) async {
+    await _authService.signUp(email, password);
+  }
+
+  Future<void> changePassword(String currentPassword, String newPassword) async {
+    await _authService.reauthenticate(currentPassword);
+    await _authService.updatePassword(newPassword);
+  }
+
   Future<void> signInAnonymously() async {
+    // ...
     await _authService.signInAnonymously();
   }
 

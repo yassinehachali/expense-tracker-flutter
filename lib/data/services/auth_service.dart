@@ -11,6 +11,22 @@ class AuthService {
     await _auth.signInWithEmailAndPassword(email: email, password: password);
   }
 
+  Future<void> signUp(String email, String password) async {
+    await _auth.createUserWithEmailAndPassword(email: email, password: password);
+  }
+
+  Future<void> reauthenticate(String password) async {
+    final user = _auth.currentUser;
+    if (user != null && user.email != null) {
+      final cred = EmailAuthProvider.credential(email: user.email!, password: password);
+      await user.reauthenticateWithCredential(cred);
+    }
+  }
+
+  Future<void> updatePassword(String newPassword) async {
+    await _auth.currentUser?.updatePassword(newPassword);
+  }
+
   Future<void> signInAnonymously() async {
     await _auth.signInAnonymously();
   }

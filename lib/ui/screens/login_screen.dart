@@ -16,23 +16,39 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController(); // New
+  
   bool _isLoading = false;
+  bool _isLogin = true; // Toggle state
   String? _error;
 
-  Future<void> _handleLogin() async {
+  Future<void> _handleAuth() async { // Renamed from _handleLogin
     setState(() {
       _isLoading = true;
       _error = null;
     });
 
     try {
-      await Provider.of<AuthProvider>(context, listen: false).signIn(
-        _emailController.text.trim(),
-        _passwordController.text,
-      );
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      final email = _emailController.text.trim();
+      final password = _passwordController.text;
+
+      if (!_isLogin) {
+        // Sign Up Validation
+        if (password != _confirmPasswordController.text) {
+          throw Exception("Passwords do not match");
+        }
+        if (password.length < 6) {
+           throw Exception("Password must be at least 6 characters");
+        }
+        await auth.signUp(email, password);
+      } else {
+        // Login
+        await auth.signIn(email, password);
+      }
     } catch (e) {
       setState(() {
-        _error = "Invalid email or password.";
+        _error = e.toString().replaceAll("Exception: ", ""); // Simple cleanup
       });
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -56,7 +72,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final isDark = theme.brightness == Brightness.dark;
     
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0f172a) : const Color(0xFFf3f4f6), // Match gradient end color
+      backgroundColor: isDark ? const Color(0xFF0f172a) : const Color(0xFFf3f4f6), 
       resizeToAvoidBottomInset: false, // Prevents keyboard from pushing/resizing layout
       body: Container(
         decoration: BoxDecoration(
@@ -87,7 +103,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: const Icon(LucideIcons.wallet, color: Colors.white, size: 48),
                 ),
 
-
                 const SizedBox(height: 32),
                 
                 // Title
@@ -100,19 +115,19 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 Text(
-                  "Manage your finances with ease",
+                  _isLogin ? "Manage your finances with ease" : "Create your account",
                   style: theme.textTheme.bodyMedium?.copyWith(color: Colors.grey),
                 ),
                 const SizedBox(height: 48),
                 
-                // Login Form Card
+                // Login/Signup Form Card
                 GlassContainer(
                    padding: const EdgeInsets.all(32),
                    borderRadius: BorderRadius.circular(24),
                    child: Column(
                      crossAxisAlignment: CrossAxisAlignment.start,
                      children: [
-                       Text("Login", style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+                       Text(_isLogin ? "Login" : "Sign Up", style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
                        const SizedBox(height: 24),
                        
                        // Email
@@ -144,6 +159,24 @@ class _LoginScreenState extends State<LoginScreen> {
                            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: theme.primaryColor)),
                          ),
                        ),
+
+                       // Confirm Password (Only for Sign Up)
+                       if (!_isLogin) ...[
+                         const SizedBox(height: 16),
+                         TextField(
+                           controller: _confirmPasswordController,
+                           obscureText: true,
+                           style: theme.textTheme.bodyMedium,
+                           decoration: InputDecoration(
+                             hintText: 'Confirm Password',
+                             prefixIcon: const Icon(LucideIcons.lock, size: 18),
+                             filled: true,
+                             fillColor: theme.cardColor.withOpacity(0.5),
+                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                             focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: theme.primaryColor)),
+                           ),
+                         ),
+                       ],
                        
                        if (_error != null)
                          Padding(
@@ -153,7 +186,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                        const SizedBox(height: 32),
                        
-                       // Sign In Button
+                       // Action Button
                        Container(
                          width: double.infinity,
                          height: 56,
@@ -165,7 +198,7 @@ class _LoginScreenState extends State<LoginScreen> {
                            ]
                          ),
                          child: ElevatedButton(
-                           onPressed: _isLoading ? null : _handleLogin,
+                           onPressed: _isLoading ? null : _handleAuth,
                            style: ElevatedButton.styleFrom(
                              backgroundColor: Colors.transparent,
                              shadowColor: Colors.transparent,
@@ -175,7 +208,20 @@ class _LoginScreenState extends State<LoginScreen> {
                            ),
                            child: _isLoading 
                              ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                             : const Text("Sign In", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                             : Text(_isLogin ? "Sign In" : "Create Account", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                         ),
+                       ),
+                       
+                       const SizedBox(height: 16),
+                       
+                       // Toggle Login/Signup
+                       Center(
+                         child: TextButton(
+                           onPressed: () => setState(() { 
+                             _isLogin = !_isLogin; 
+                             _error = null;
+                           }),
+                           child: Text(_isLogin ? "Don't have an account? Sign Up" : "Already have an account? Login"),
                          ),
                        ),
                      ],
@@ -185,19 +231,21 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 24),
                 
                 // Guest Option
-                Row(
-                  children: [
-                    Expanded(child: Divider(color: theme.dividerColor)),
-                    Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Text("OR", style: TextStyle(color: Colors.grey[500], fontSize: 12))),
-                    Expanded(child: Divider(color: theme.dividerColor)),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                
-                TextButton(
-                  onPressed: _isLoading ? null : _handleGuestLogin,
-                  child: Text("Continue as Guest", style: TextStyle(color: theme.textTheme.bodyMedium?.color)),
-                )
+                if (_isLogin) ...[ // Only show guest login in Login mode to keep UI clean
+                  Row(
+                    children: [
+                      Expanded(child: Divider(color: theme.dividerColor)),
+                      Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Text("OR", style: TextStyle(color: Colors.grey[500], fontSize: 12))),
+                      Expanded(child: Divider(color: theme.dividerColor)),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  
+                  TextButton(
+                    onPressed: _isLoading ? null : _handleGuestLogin,
+                    child: Text("Continue as Guest", style: TextStyle(color: theme.textTheme.bodyMedium?.color)),
+                  )
+                ]
               ],
             ),
           ),

@@ -28,23 +28,23 @@ class ExpenseCard extends StatelessWidget {
     bool isIncome = expense.type == 'income';
     bool isLoan = expense.type == 'loan';
     
+    // Strikethrough style for returned loans
+    final bool isReturnedLoan = isLoan && expense.isReturned;
+    
     if (isIncome) {
       iconKey = 'Wallet'; 
       catColor = Colors.green;
+    } else if (isReturnedLoan) {
+      // Returned Loan Style (Green Check, Green Text, Strikethrough)
+      iconKey = 'CheckCircle';
+      catColor = Colors.green; 
     } else if (isLoan) {
       iconKey = 'Handshake';
       catColor = Colors.orange;
     } else {
-      // Find category color & icon
-      // We must access the provider to get the full list (Default + Custom)
-      // Since we are in a stateless widget, we can access context provided by parent or use Consumer
-      // Ideally, ExpenseCard should be simple. Accessing Provider here is fine.
-      
+      // ... category logic ...
       final provider = Provider.of<ExpenseProvider>(context, listen: false); 
-      // Using listen: false because we don't need to rebuild card if categories change immediately, 
-      // though typically if categories change, the parent listing might rebuild.
-      
-      final categoryList = provider.categories; // This now correctly runs the getter with defaults+custom
+      final categoryList = provider.categories;
       
       CategoryModel? cat;
       try {
@@ -57,8 +57,6 @@ class ExpenseCard extends StatelessWidget {
          catColor = hexToColor(cat.color);
          iconKey = cat.icon;
       } else {
-         // Fallback if not found (e.g. deleted category)
-         // Try default explicitly just in case logic fails or if it's a legacy category
          final def = DEFAULT_CATEGORIES.firstWhere(
             (c) => c['name'] == expense.category, 
             orElse: () => {'color': '#999999', 'icon': 'MoreHorizontal'}
@@ -69,6 +67,7 @@ class ExpenseCard extends StatelessWidget {
     }
 
     return Dismissible(
+      // ... dismissible logic ...
       key: Key(expense.id),
       direction: DismissDirection.endToStart,
       background: Container(
@@ -129,14 +128,20 @@ class ExpenseCard extends StatelessWidget {
                 children: [
                    Text(
                      expense.description.isNotEmpty ? expense.description : expense.category,
-                     style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.bold),
+                     style: theme.textTheme.bodyLarge?.copyWith(
+                       fontWeight: FontWeight.bold,
+                       decoration: isReturnedLoan ? TextDecoration.lineThrough : null,
+                       color: isReturnedLoan ? Colors.grey : null, // Grey out text if returned
+                     ),
                      maxLines: 1,
                      overflow: TextOverflow.ellipsis,
                    ),
                    const SizedBox(height: 4),
                    Text(
-                     DateFormat.yMMMd().format(DateTime.parse(expense.date)),
-                     style: theme.textTheme.bodySmall,
+                     isReturnedLoan ? 'Loan Returned' : DateFormat.yMMMd().format(DateTime.parse(expense.date)),
+                     style: theme.textTheme.bodySmall?.copyWith(
+                       color: isReturnedLoan ? Colors.green : null
+                     ),
                    ),
                 ],
               ),
@@ -150,10 +155,12 @@ class ExpenseCard extends StatelessWidget {
                   '${isIncome ? '+' : '-'} ${Utils.formatCurrency(expense.amount)}',
                   style: theme.textTheme.bodyLarge?.copyWith(
                     fontWeight: FontWeight.bold,
-                    color: isIncome ? Colors.green : Colors.red,
+                    color: (isIncome || isReturnedLoan) ? Colors.green : Colors.red,
+                    decoration: isReturnedLoan ? TextDecoration.lineThrough : null,
+                    decorationThickness: 2.0,
                   ),
                 ),
-                if (isLoan && expense.returnedAmount > 0)
+                if (isLoan && expense.returnedAmount > 0 && !isReturnedLoan)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
                     child: Text(

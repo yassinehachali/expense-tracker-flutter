@@ -144,23 +144,35 @@ class TransactionsScreen extends StatelessWidget {
                                     bottom: false, // Ignore the bottom (keyboard/home bar) area
                                     child: Wrap(
                                       children: [
-                                        ListTile(
-                                          leading: const Icon(Icons.edit),
-                                          title: const Text("Edit Transaction"),
-                                          onTap: () {
-                                            Navigator.pop(ctx);
-                                            Navigator.push(context, MaterialPageRoute(builder: (_) => AddExpenseScreen(expenseToEdit: expense)));
-                                          },
-                                        ),
-                                        ListTile(
-                                          leading: const Icon(Icons.delete, color: Colors.red),
-                                          title: const Text("Delete Transaction", style: TextStyle(color: Colors.red)),
-                                          onTap: () async {
-                                            Navigator.pop(ctx);
-                                            await provider.deleteExpense(expense.id);
-                                          },
-                                        ),
-                                      ],
+                                          if (expense.type == 'loan')
+                                            ListTile(
+                                              leading: Icon(
+                                                expense.isReturned ? Icons.undo : Icons.check_circle_outline, 
+                                                color: expense.isReturned ? Colors.orange : Colors.green
+                                              ),
+                                              title: Text(expense.isReturned ? "Mark as Pending" : "Mark as Returned"),
+                                              onTap: () async {
+                                                Navigator.pop(ctx);
+                                                await provider.setLoanReturned(expense, !expense.isReturned);
+                                              },
+                                            ),
+                                          ListTile(
+                                            leading: const Icon(Icons.edit),
+                                            title: const Text("Edit Transaction"),
+                                            onTap: () {
+                                              Navigator.pop(ctx);
+                                              Navigator.push(context, MaterialPageRoute(builder: (_) => AddExpenseScreen(expenseToEdit: expense)));
+                                            },
+                                          ),
+                                          ListTile(
+                                            leading: const Icon(Icons.delete, color: Colors.red),
+                                            title: const Text("Delete Transaction", style: TextStyle(color: Colors.red)),
+                                            onTap: () async {
+                                              Navigator.pop(ctx);
+                                              await provider.deleteExpense(expense.id);
+                                            },
+                                          ),
+                                        ],
                                     ),
                                   ),
                                 );

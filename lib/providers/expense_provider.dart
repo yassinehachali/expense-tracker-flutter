@@ -237,6 +237,16 @@ class ExpenseProvider with ChangeNotifier {
     });
   }
 
+  Future<void> setLoanReturned(ExpenseModel loan, bool isReturned) async {
+    if (userId == null) return;
+    await _firestoreService.updateExpense(userId!, loan.id, {
+      'isReturned': isReturned,
+      // If marking as returned, set returnedAmount to full amount
+      // If marking as un-returned, should we reset? Let's say yes for simplicity, or 0.
+      'returnedAmount': isReturned ? loan.amount : 0.0, 
+    });
+  }
+
   Future<void> deleteExpense(String id) async {
     if (userId == null) return;
     await _firestoreService.deleteExpense(userId!, id);

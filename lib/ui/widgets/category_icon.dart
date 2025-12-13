@@ -41,6 +41,8 @@ class CategoryIcon extends StatelessWidget {
     'Shirt': LucideIcons.shirt,
     'Banknote': LucideIcons.banknote,
     'Handshake': Icons.handshake,
+    'CheckCircle': LucideIcons.checkCircle,
+    'Check': LucideIcons.check,
   };
 
   @override
