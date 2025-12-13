@@ -1,9 +1,10 @@
-// File: lib/ui/screens/settings_screen.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/expense_provider.dart';
+import '../../data/services/update_service.dart';
 import 'category_screen.dart';
 import '../../core/utils.dart';
 
@@ -62,6 +63,17 @@ class SettingsScreen extends StatelessWidget {
                 _showChangePasswordDialog(context, auth);
               },
             ),
+
+          if (!kIsWeb) // Auto-update is only for Android APKs
+            ListTile(
+              leading: const Icon(LucideIcons.downloadCloud),
+              title: const Text('Check for Updates'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                _checkForUpdates(context);
+              },
+            ),
+
 
           const Divider(),
 
@@ -202,6 +214,108 @@ class SettingsScreen extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  Future<void> _checkForUpdates(BuildContext context) async {
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final updateData = await UpdateService().checkForUpdate();
+      if (context.mounted) Navigator.pop(context); // Close loading
+
+      if (updateData != null && context.mounted) {
+        // Show update available dialog
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text("Update Available 🚀"),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("Version: ${updateData['version']}", style: const TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  const Text("Changelog:"),
+                  const SizedBox(height: 4),
+                  Text(updateData['changelog']),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Later")),
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _startUpdate(context, updateData['url']);
+                },
+                child: const Text("Update Now"),
+              ),
+            ],
+          ),
+        );
+      } else if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("You are up to date!")));
+      }
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.pop(context); // ensure loading is closed
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error checking for updates: $e")));
+      }
+    }
+  }
+
+  void _startUpdate(BuildContext context, String url) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        double progress = 0;
+        String status = "Starting download...";
+        
+        return StatefulBuilder(
+          builder: (context, setState) {
+            // Start download once
+            if (progress == 0 && status == "Starting download...") {
+               UpdateService().downloadUpdate(url, (val) {
+                 if (context.mounted) {
+                   setState(() {
+                     progress = val;
+                     status = "Downloading: ${(val * 100).toStringAsFixed(0)}%";
+                   });
+                 }
+               }).then((path) {
+                 if (context.mounted) {
+                   Navigator.pop(context); // Close dialog
+                   if (path != null) {
+                     UpdateService().installUpdate(path);
+                   } else {
+                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Download failed")));
+                   }
+                 }
+               });
+            }
+
+            return AlertDialog(
+              title: const Text("Updating..."),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  LinearProgressIndicator(value: progress),
+                  const SizedBox(height: 8),
+                  Text(status),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }

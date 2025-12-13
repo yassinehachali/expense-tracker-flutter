@@ -1,7 +1,7 @@
 name: expense_tracker
 description: A new Flutter project.
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.0+2
 
 environment:
   sdk: '>=3.2.0 <4.0.0'
@@ -27,6 +27,13 @@ dependencies:
   # Utilities
   uuid: ^4.3.3
   shared_preferences: ^2.2.2
+
+  # Updates
+  package_info_plus: ^5.0.1
+  http: ^1.2.0
+  dio: ^5.4.0
+  path_provider: ^2.1.2
+  open_filex: ^4.3.2
 
 dev_dependencies:
   flutter_test:
