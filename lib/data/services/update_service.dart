@@ -56,6 +56,11 @@ class UpdateService {
              'localDebug': cleanCurrent,
            };
         }
+      } else {
+        // Handle API errors (like 404 for private repos)
+        return {
+          'error': 'GitHub API returned ${response.statusCode}. (Is the repo Private?)'
+        };
       }
     } catch (e) {
       print("Error checking for updates: $e");

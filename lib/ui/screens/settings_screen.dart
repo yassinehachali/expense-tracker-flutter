@@ -302,13 +302,25 @@ class SettingsScreen extends StatelessWidget {
                      status = "Downloading: ${(val * 100).toStringAsFixed(0)}%";
                    });
                  }
-               }).then((path) {
+               }).then((path) async {
                  if (context.mounted) {
-                   Navigator.pop(context); // Close dialog
+                   setState(() {
+                     status = "Launching Installer...";
+                     progress = 1.0;
+                   });
+                   
+                   // Small delay to let user see the completion
+                   await Future.delayed(const Duration(seconds: 1));
+                   
                    if (path != null) {
-                     UpdateService().installUpdate(path);
+                      await UpdateService().installUpdate(path);
+                      // Only close dialog after attempting to open installer
+                      if (context.mounted) Navigator.pop(context);
                    } else {
-                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Download failed")));
+                     if (context.mounted) {
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Download failed")));
+                     }
                    }
                  }
                });
