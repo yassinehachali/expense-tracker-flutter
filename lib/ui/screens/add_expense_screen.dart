@@ -135,7 +135,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         centerTitle: true,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(context).viewInsets.bottom + 20),
         child: Column(
           children: [
             // Type Segmented Control
