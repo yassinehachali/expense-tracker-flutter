@@ -229,39 +229,51 @@ class SettingsScreen extends StatelessWidget {
       final updateData = await UpdateService().checkForUpdate();
       if (context.mounted) Navigator.pop(context); // Close loading
 
-      if (updateData != null && context.mounted) {
-        // Show update available dialog
-        showDialog(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text("Update Available 🚀"),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text("Version: ${updateData['version']}", style: const TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
-                  const Text("Changelog:"),
-                  const SizedBox(height: 4),
-                  Text(updateData['changelog']),
-                ],
+      if (updateData != null) {
+        if (updateData['error'] != null) {
+           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: ${updateData['error']}")));
+           return;
+        }
+
+        if (updateData['updateAvailable'] == true) {
+          // Show update available dialog
+          showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text("Update Available 🚀"),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("Version: ${updateData['version']}", style: const TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    const Text("Changelog:"),
+                    const SizedBox(height: 4),
+                    Text(updateData['changelog']),
+                  ],
+                ),
               ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Later")),
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _startUpdate(context, updateData['url']);
+                  },
+                  child: const Text("Update Now"),
+                ),
+              ],
             ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Later")),
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _startUpdate(context, updateData['url']);
-                },
-                child: const Text("Update Now"),
-              ),
-            ],
-          ),
-        );
-      } else if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("You are up to date!")));
+          );
+        } else {
+          // Debugging info in user feedback
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Up to date! (Local: ${updateData['localVersion']} vs Remote: ${updateData['version']})"))
+          );
+        }
+      } else {
+         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Check failed (No response)")));
       }
     } catch (e) {
       if (context.mounted) {

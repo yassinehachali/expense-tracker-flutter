@@ -39,15 +39,27 @@ class UpdateService {
           
           if (apkAsset != null) {
             return {
+              'updateAvailable': true,
               'version': tagName,
+              'localVersion': currentVersion,
               'url': apkAsset['browser_download_url'],
               'changelog': data['body'] ?? 'No changelog available.',
             };
           }
+        } else {
+           // Debug: Return versions even if not newer
+           return {
+             'updateAvailable': false,
+             'version': tagName,
+             'localVersion': currentVersion,
+             'remoteDebug': cleanTag,
+             'localDebug': cleanCurrent,
+           };
         }
       }
     } catch (e) {
       print("Error checking for updates: $e");
+      return {'error': e.toString()};
     }
     return null;
   }
