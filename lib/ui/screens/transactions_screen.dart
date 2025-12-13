@@ -141,6 +141,7 @@ class TransactionsScreen extends StatelessWidget {
                                   backgroundColor: theme.cardColor,
                                   shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
                                   builder: (ctx) => SafeArea(
+                                    bottom: false, // Ignore the bottom (keyboard/home bar) area
                                     child: Wrap(
                                       children: [
                                         ListTile(
