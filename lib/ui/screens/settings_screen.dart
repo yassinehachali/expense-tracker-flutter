@@ -313,9 +313,13 @@ class SettingsScreen extends StatelessWidget {
                    await Future.delayed(const Duration(seconds: 1));
                    
                    if (path != null) {
-                      await UpdateService().installUpdate(path);
-                      // Only close dialog after attempting to open installer
-                      if (context.mounted) Navigator.pop(context);
+                      final error = await UpdateService().installUpdate(path);
+                      if (context.mounted) {
+                        Navigator.pop(context); // Close dialog
+                        if (error != null) {
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Install failed: $error")));
+                        }
+                      }
                    } else {
                      if (context.mounted) {
                         Navigator.pop(context);

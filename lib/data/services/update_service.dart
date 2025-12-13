@@ -105,11 +105,12 @@ class UpdateService {
   }
 
   // Triggers the installation
-  Future<void> installUpdate(String filePath) async {
+  Future<String?> installUpdate(String filePath) async {
     final result = await OpenFilex.open(filePath);
     if (result.type != ResultType.done) {
-      print("Install error: ${result.message}");
+      return result.message; // Return the error message
     }
+    return null; // Success
   }
 }
 
