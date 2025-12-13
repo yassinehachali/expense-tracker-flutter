@@ -12,90 +12,104 @@ class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
   @override
+  @override
   Widget build(BuildContext context) {
-    final auth = Provider.of<AuthProvider>(context, listen: false);
-    final expenseProvider = Provider.of<ExpenseProvider>(context);
-    final theme = Theme.of(context);
+    try {
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      final expenseProvider = Provider.of<ExpenseProvider>(context);
+      final theme = Theme.of(context);
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Settings'), centerTitle: false),
-      body: ListView(
-        children: [
-          // Profile Section
-          ListTile(
-            leading: CircleAvatar(
-              backgroundColor: Colors.indigo,
-              child: Text(auth.user?.email != null ? auth.user!.email![0].toUpperCase() : 'G', 
-                style: const TextStyle(color: Colors.white)),
-            ),
-            title: Text(auth.user?.email ?? 'Guest User'),
-            subtitle: Text(auth.user?.uid ?? ''),
-          ),
-          const Divider(),
-
-          // Salary Configuration
-          ListTile(
-            leading: const Icon(LucideIcons.briefcase),
-            title: const Text('Monthly Salary'),
-            subtitle: Text(Utils.formatCurrency(expenseProvider.salary)),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () {
-              _showSalaryDialog(context, expenseProvider);
-            },
-          ),
-          
-          ListTile(
-            leading: const Icon(LucideIcons.list),
-            title: const Text('Categories'),
-            subtitle: const Text('Manage your categories'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const CategoryScreen()));
-            },
-          ),
-          
-          if (auth.user?.email != null) // Only show for logged in users
-             ListTile(
-              leading: const Icon(LucideIcons.lock),
-              title: const Text('Change Password'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                _showChangePasswordDialog(context, auth);
-              },
-            ),
-
-          if (!kIsWeb) // Auto-update is only for Android APKs
+      return Scaffold(
+        appBar: AppBar(title: const Text('Settings'), centerTitle: false),
+        body: ListView(
+          children: [
+            // Profile Section
             ListTile(
-              leading: const Icon(LucideIcons.downloadCloud),
-              title: const Text('Check for Updates'),
+              leading: CircleAvatar(
+                backgroundColor: Colors.indigo,
+                child: Text(auth.user?.email != null && auth.user!.email!.isNotEmpty 
+                  ? auth.user!.email![0].toUpperCase() 
+                  : 'G', 
+                  style: const TextStyle(color: Colors.white)),
+              ),
+              title: Text(auth.user?.email ?? 'Guest User'),
+              subtitle: Text(auth.user?.uid ?? ''),
+            ),
+            const Divider(),
+
+            // Salary Configuration
+            ListTile(
+              leading: const Icon(LucideIcons.briefcase),
+              title: const Text('Monthly Salary'),
+              subtitle: Text(Utils.formatCurrency(expenseProvider.salary)),
               trailing: const Icon(Icons.chevron_right),
               onTap: () {
-                _checkForUpdates(context);
+                _showSalaryDialog(context, expenseProvider);
               },
             ),
+            
+            ListTile(
+              leading: const Icon(LucideIcons.list),
+              title: const Text('Categories'),
+              subtitle: const Text('Manage your categories'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const CategoryScreen()));
+              },
+            ),
+            
+            if (auth.user?.email != null) // Only show for logged in users
+               ListTile(
+                leading: const Icon(LucideIcons.lock),
+                title: const Text('Change Password'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  _showChangePasswordDialog(context, auth);
+                },
+              ),
+
+            if (!kIsWeb) // Auto-update is only for Android APKs
+              ListTile(
+                leading: const Icon(LucideIcons.downloadCloud),
+                title: const Text('Check for Updates'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  _checkForUpdates(context);
+                },
+              ),
 
 
-          const Divider(),
+            const Divider(),
 
-          // Danger Zone
-          ListTile(
-            leading: const Icon(LucideIcons.trash2, color: Colors.red),
-            title: const Text('Reset All Data', style: TextStyle(color: Colors.red)),
-            onTap: () {
-               _showResetDialog(context, expenseProvider);
-            },
+            // Danger Zone
+            ListTile(
+              leading: const Icon(LucideIcons.trash2, color: Colors.red),
+              title: const Text('Reset All Data', style: TextStyle(color: Colors.red)),
+              onTap: () {
+                 _showResetDialog(context, expenseProvider);
+              },
+            ),
+            
+             ListTile(
+              leading: const Icon(LucideIcons.logOut),
+              title: const Text('Log Out'),
+              onTap: () async {
+                await auth.signOut();
+              },
+            ),
+          ],
+        ),
+      );
+    } catch (e, stack) {
+      return Scaffold(
+        body: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Text("Error loading Settings:\n$e\n\n$stack", style: const TextStyle(color: Colors.red)),
           ),
-          
-           ListTile(
-            leading: const Icon(LucideIcons.logOut),
-            title: const Text('Log Out'),
-            onTap: () async {
-              await auth.signOut();
-            },
-          ),
-        ],
-      ),
-    );
+        ),
+      );
+    }
   }
 
   void _showSalaryDialog(BuildContext context, ExpenseProvider provider) {
