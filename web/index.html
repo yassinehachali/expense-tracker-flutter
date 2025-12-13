@@ -36,32 +36,19 @@
   <title>Expense Tracker</title>
   <link rel="manifest" href="manifest.json">
   <style>
+    /* Absolute reset for PWA */
+    html,
     body {
       background-color: #0F172A;
       /* Dark Slate to match app theme */
       margin: 0;
       padding: 0;
-      height: 100vh;
-      width: 100vw;
+      height: 100%;
+      width: 100%;
       overflow: hidden;
+      /* Prevent native scroll bounce */
     }
   </style>
-  <script>
-    // Fix for PWA keyboard "Stuck Viewport" issue
-    // Forces the window to reset scroll when keyboard interacts
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', () => {
-        // Ensure body height matches viewport to avoid gaps
-        document.body.style.height = window.visualViewport.height + 'px';
-        // Force scroll reset
-        window.scrollTo(0, 0);
-      });
-    }
-    // Backup for older browsers or focus events
-    document.addEventListener('focusout', function () {
-      setTimeout(() => window.scrollTo(0, 0), 200);
-    });
-  </script>
 </head>
 
 <body>

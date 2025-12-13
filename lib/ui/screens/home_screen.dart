@@ -40,7 +40,7 @@ class _HomeScreenState extends State<HomeScreen> {
     ];
 
     return Scaffold(
-      // resizeToAvoidBottomInset: true, // Default is true, removing explicit false
+      resizeToAvoidBottomInset: false, // Critical for PWA overlay mode: prevents blank space under keyboard
       body: SafeArea(
         child: IndexedStack(
           index: _selectedIndex,

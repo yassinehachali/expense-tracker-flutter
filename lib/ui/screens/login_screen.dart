@@ -57,7 +57,7 @@ class _LoginScreenState extends State<LoginScreen> {
     
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF0f172a) : const Color(0xFFf3f4f6), // Match gradient end color
-      resizeToAvoidBottomInset: true,
+      resizeToAvoidBottomInset: false, // Prevents keyboard from pushing/resizing layout
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
