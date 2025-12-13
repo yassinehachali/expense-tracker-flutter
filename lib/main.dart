@@ -1,5 +1,6 @@
 // File: lib/main.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
 import 'core/firebase_options.dart';
@@ -9,11 +10,62 @@ import 'providers/expense_provider.dart';
 import 'ui/screens/login_screen.dart';
 import 'ui/screens/home_screen.dart';
 
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:workmanager/workmanager.dart';
+import 'data/services/notification_service.dart';
+import 'data/services/update_service.dart';
+import 'core/global_events.dart';
+
+// Top-level function for background work
+@pragma('vm:entry-point')
+void callbackDispatcher() {
+  Workmanager().executeTask((task, inputData) async {
+    print("Native called background task: $task");
+    if (task == 'update_check_task') {
+       // Initialize deps if needed (Firebase not needed for update check usually, but path_provider is safe)
+       // We rely on UpdateService.checkAndNotify which uses http
+       await UpdateService.checkAndNotify();
+    }
+    return Future.value(true);
+  });
+}
+
+
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  
+  // Background Updates are for Android/iOS only, not Web
+  if (!kIsWeb) {
+    // Initialize Notification Service
+    final notificationService = NotificationService();
+    await notificationService.init((NotificationResponse response) {
+       // Handle tap
+       if (response.payload == 'update_check') {
+          GlobalEvents.trigger('open_update_check');
+       }
+    });
+
+    // Initialize Workmanager
+    await Workmanager().initialize(
+        callbackDispatcher, 
+        isInDebugMode: false 
+    );
+    
+    // Register Periodic Task
+    await Workmanager().registerPeriodicTask(
+      "update_check_task",
+      "update_check_task",
+      frequency: const Duration(minutes: 15),
+      constraints: Constraints(
+        networkType: NetworkType.connected,
+      ),
+    );
+  }
   
   runApp(const MyApp());
 }

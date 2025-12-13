@@ -82,14 +82,29 @@ class TransactionsScreen extends StatelessWidget {
                       final dateKey = sortedKeys[index];
                       final expenses = groupedExpenses[dateKey]!;
                       final date = DateTime.parse(dateKey);
-                      final dayName = DateFormat('EEEE').format(date); // e.g. Friday
-                      final dayNum = DateFormat('d').format(date); // e.g. 12
+                      final inCycle = provider.isInCurrentCycle(date);
                       
+                      String dateLabel;
+                      if (inCycle) {
+                         // e.g. Friday 12
+                         dateLabel = '${DateFormat('EEEE').format(date)} ${DateFormat('d').format(date)}';
+                      } else {
+                         // e.g. Dec 28
+                         dateLabel = DateFormat('MMM d').format(date);
+                      }
+
                       // Calculate Daily Total
                       double dailyTotal = 0;
                       for (var e in expenses) {
                          if (e.type == 'income') {
                            dailyTotal += e.amount;
+                         } else if (e.type == 'loan') {
+                            // For loans, we consider them 'spent' in this visualization 
+                            // unless we want to show net.
+                            // If we follow 'Cash Flow', Loan is Expense.
+                            dailyTotal -= e.amount;
+                         } else if (e.type == 'rollover') {
+                            dailyTotal += e.amount; // Rollover adds to daily positive flow (Start of month)
                          } else {
                            dailyTotal -= e.amount;
                          }
@@ -111,7 +126,7 @@ class TransactionsScreen extends StatelessWidget {
                                     const Icon(Icons.calendar_today, size: 16, color: Colors.grey),
                                     const SizedBox(width: 8),
                                     Text(
-                                      '$dayName $dayNum',
+                                      dateLabel,
                                       style: theme.textTheme.titleMedium?.copyWith(
                                         fontWeight: FontWeight.bold,
                                         color: theme.textTheme.bodyLarge?.color?.withOpacity(0.9)

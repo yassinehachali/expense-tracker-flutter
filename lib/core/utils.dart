@@ -26,6 +26,16 @@ class Utils {
      // Note: In Flutter models we might handle this differently, but keeping simple
      return 0;
   }
+  static const List<String> _months = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+
+  static String getMonthName(int index) {
+    if (index < 0 || index > 11) return 'Invalid';
+    return _months[index];
+  }
+
   static const Map<String, IconData> _iconMap = {
     'Home': LucideIcons.home,
     'Utensils': LucideIcons.utensils,

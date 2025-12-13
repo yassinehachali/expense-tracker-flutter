@@ -12,7 +12,9 @@ import '../widgets/category_icon.dart';
 
 class AddExpenseScreen extends StatefulWidget {
   final ExpenseModel? expenseToEdit;
-  const AddExpenseScreen({super.key, this.expenseToEdit});
+  final DateTime? initialDate; 
+
+  const AddExpenseScreen({super.key, this.expenseToEdit, this.initialDate});
 
   @override
   State<AddExpenseScreen> createState() => _AddExpenseScreenState();
@@ -39,6 +41,8 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       _selectedDate = DateTime.parse(e.date);
       // Ensure category exists in default list or handle custom
       _selectedCategory = e.category; 
+    } else if (widget.initialDate != null) {
+      _selectedDate = widget.initialDate!;
     }
   }
 

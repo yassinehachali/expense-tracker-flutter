@@ -85,8 +85,18 @@ class FirestoreService {
     await _getExpensesRef(uid).doc(expenseId).delete();
   }
 
-  Future<void> updateSalary(String uid, double salary) async {
-    await _getSettingsRef(uid).set({'salary': salary}, SetOptions(merge: true));
+  Future<void> updateSettings(String uid, Map<String, dynamic> data) async {
+    await _getSettingsRef(uid).set(data, SetOptions(merge: true));
+  }
+
+  Future<void> updateMonthlyOverride(String uid, int year, int month, MonthlySettings settings) async {
+    // month is 1-12
+    final key = "$year-$month"; 
+    await _getSettingsRef(uid).set({
+      'monthlyOverrides': {
+        key: settings.toMap()
+      }
+    }, SetOptions(merge: true));
   }
 
   Future<void> addCategory(String uid, CategoryModel category) async {

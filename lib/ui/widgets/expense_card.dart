@@ -27,11 +27,15 @@ class ExpenseCard extends StatelessWidget {
     String iconKey = 'MoreHorizontal'; 
     bool isIncome = expense.type == 'income';
     bool isLoan = expense.type == 'loan';
+    bool isRollover = expense.type == 'rollover'; // New Type
     
     // Strikethrough style for returned loans
     final bool isReturnedLoan = isLoan && expense.isReturned;
     
-    if (isIncome) {
+    if (isRollover) {
+      iconKey = 'History'; // or RefreshCcw
+      catColor = Colors.green; // User requested Green
+    } else if (isIncome) {
       iconKey = 'Wallet'; 
       catColor = Colors.green;
     } else if (isReturnedLoan) {
@@ -64,6 +68,41 @@ class ExpenseCard extends StatelessWidget {
          catColor = hexToColor(def['color'] as String);
          iconKey = def['icon'] as String;
       }
+    }
+
+    if (expense.type == 'rollover') {
+       // Non-dismissible, non-interactive (or read-only)
+       // We skip Dismissible
+       return GestureDetector(
+         onTap: null, // Rollover is informational
+         child: GlassContainer(
+          padding: const EdgeInsets.all(16),
+          borderRadius: BorderRadius.circular(20),
+          child: Row(
+          children: [
+            Container(
+              width: 48, height: 48,
+              decoration: BoxDecoration(color: catColor.withOpacity(0.1), borderRadius: BorderRadius.circular(14)),
+              child: Center(child: CategoryIcon(iconKey: iconKey, color: catColor, size: 24)),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                   Text(expense.description, style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
+                   const SizedBox(height: 4),
+                   Text(DateFormat.yMMMd().format(DateTime.parse(expense.date)), style: theme.textTheme.bodySmall),
+                ],
+              ),
+            ),
+            Text(
+              '+ ${Utils.formatCurrency(expense.amount)}',
+              style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.bold, color: Colors.green),
+            ),
+          ],
+        ),
+       ));
     }
 
     return Dismissible(

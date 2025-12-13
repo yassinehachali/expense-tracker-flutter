@@ -1,4 +1,3 @@
-// File: lib/providers/expense_provider.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../data/models/expense_model.dart';
@@ -6,6 +5,7 @@ import '../data/models/category_model.dart';
 import '../data/models/user_settings_model.dart';
 import '../data/services/firestore_service.dart';
 import '../core/constants.dart';
+import '../core/utils.dart';
 
 class ExpenseProvider with ChangeNotifier {
   final FirestoreService _firestoreService = FirestoreService();
@@ -13,12 +13,14 @@ class ExpenseProvider with ChangeNotifier {
 
   List<ExpenseModel> _expenses = [];
   List<CategoryModel> _categories = [];
-  double _salary = 0.0;
+  
+  // Settings State
+  UserSettingsModel _settings = UserSettingsModel();
   
   // UI State
-  int _selectedMonth = DateTime.now().month - 1; // 0-indexed for consistent logic
+  int _selectedMonth = DateTime.now().month - 1; // 0-indexed (Jan=0, Dec=11)
   int _selectedYear = DateTime.now().year;
-  String _filterType = 'all'; // 'all', 'expense', 'loan', 'income'
+  String _filterType = 'all';
 
   // Streams
   StreamSubscription? _expensesSub;
@@ -31,26 +33,68 @@ class ExpenseProvider with ChangeNotifier {
   List<ExpenseModel> get expenses => _expenses;
   List<CategoryModel> get categories {
     final defaults = DEFAULT_CATEGORIES.map((c) => CategoryModel.fromMap(c)).toList();
-    // Combine and deduplicate by name, preferring user categories
     final Map<String, CategoryModel> uniqueCategories = {};
-    
-    // Add defaults first
-    for (var c in defaults) {
-      uniqueCategories[c.name] = c;
-    }
-    
-    // Override/Add user categories
-    for (var c in _categories) {
-      uniqueCategories[c.name] = c;
-    }
-    
+    for (var c in defaults) uniqueCategories[c.name] = c;
+    for (var c in _categories) uniqueCategories[c.name] = c;
     return uniqueCategories.values.toList();
   }
-  double get salary => _salary;
   
   int get selectedMonth => _selectedMonth;
   int get selectedYear => _selectedYear;
   String get filterType => _filterType;
+
+  // --- Dynamic Cycle Logic ---
+
+  MonthlySettings _getEffectiveSettings(int year, int month) {
+    // month is 0-indexed coming in, convert to 1-indexed for key
+    final key = "$year-${month + 1}";
+    return _settings.monthlyOverrides[key] ?? MonthlySettings(
+      salary: _settings.defaultSalary,
+      startDay: _settings.defaultStartDay,
+      monthOffset: (_settings.defaultStartDay > 1) ? -1 : 0
+      // Logic for default offset:
+      // If default start day is 1, it's SAME month (Jan 1).
+      // If default start day > 1 (e.g. 26), usually means PREVIOUS month (Dec 26 for Jan).
+    );
+  }
+
+  // Returns the precise Start Date for a specific budget month
+  DateTime getCycleStartDate(int year, int month) {
+    final s = _getEffectiveSettings(year, month);
+    // month is 0-indexed
+    // DateTime handles overflow: DateTime(2025, 0 + (-1), 26) -> Dec 26, 2024
+    return DateTime(year, month + 1 + s.monthOffset, s.startDay);
+  }
+  
+  // Returns salary for current view
+  double get currentCycleSalary => _getEffectiveSettings(_selectedYear, _selectedMonth).salary;
+  
+  // Returns start date for CURRENTLY selected view
+  DateTime get currentCycleStart => getCycleStartDate(_selectedYear, _selectedMonth);
+
+  // Returns end date: The day BEFORE the NEXT cycle starts
+  DateTime get currentCycleEnd {
+     // Next month logic
+     int nextMonth = _selectedMonth + 1;
+     int nextYear = _selectedYear;
+     if (nextMonth > 11) {
+       nextMonth = 0;
+       nextYear++;
+     }
+     
+     final nextStart = getCycleStartDate(nextYear, nextMonth);
+     return nextStart.subtract(const Duration(days: 1));
+  }
+  
+  bool isInCurrentCycle(DateTime date) {
+    final start = currentCycleStart;
+    final end = currentCycleEnd;
+    final target = DateTime(date.year, date.month, date.day);
+    return (target.isAfter(start) || target.isAtSameMomentAs(start)) && 
+           (target.isBefore(end) || target.isAtSameMomentAs(end));
+  }
+
+  // ---
 
   void setUserId(String? uid) {
     if (userId == uid) return;
@@ -61,7 +105,7 @@ class ExpenseProvider with ChangeNotifier {
       _initStreams(uid);
     } else {
       _expenses = [];
-      _salary = 0;
+      _settings = UserSettingsModel();
       notifyListeners();
     }
   }
@@ -74,19 +118,23 @@ class ExpenseProvider with ChangeNotifier {
       _expenses = data;
       _isLoading = false;
       notifyListeners();
+    }, onError: (e) {
+      _isLoading = false;
+      notifyListeners();
     });
 
     _settingsSub = _firestoreService.getSettingsStream(uid).listen((data) {
-      _salary = data.salary;
+      _settings = data;
+      // Force refresh of any derived data
       notifyListeners();
-    });
+    }, onError: (e) => print("Error loading settings: $e"));
 
     _categoriesSub = _firestoreService.getCategoriesStream(uid).listen((data) {
       _categories = data;
       notifyListeners();
-    });
+    }, onError: (e) => print("Error loading categories: $e"));
   }
-
+  
   void _cancelSubscriptions() {
     _expensesSub?.cancel();
     _settingsSub?.cancel();
@@ -98,8 +146,6 @@ class ExpenseProvider with ChangeNotifier {
     _cancelSubscriptions();
     super.dispose();
   }
-
-  // --- UI Logic ---
 
   void setMonth(int month) {
     _selectedMonth = month;
@@ -116,36 +162,34 @@ class ExpenseProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  // Filtered List
   List<ExpenseModel> get filteredExpenses {
     List<ExpenseModel> result = _expenses.filter((exp) {
       final d = DateTime.parse(exp.date);
-      // JS getMonth is 0-indexed, Dart DateTime.month is 1-indexed
-      // Our _selectedMonth is 0-indexed (because we use it for index in MONTHS array)
-      final expMonthIndex = d.month - 1; 
+      final inCycle = isInCurrentCycle(d);
+
+      if (!inCycle && exp.type != 'loan') return false; 
       
-      final isCurrentMonth = expMonthIndex == _selectedMonth && d.year == _selectedYear;
+      if (exp.type == 'loan') {
+         // If filter is explicitly 'loan', show ALL loans (active and returned history)
+         if (_filterType == 'loan') return true;
+         // Otherwise (Dashboard/All), show active loans OR loans from this cycle
+         return !exp.isReturned || inCycle;
+      }
 
       if (_filterType == 'expense') {
-        return isCurrentMonth && (exp.type == 'expense' || exp.type == null);
-      }
-      if (_filterType == 'loan') {
-        return exp.type == 'loan' && (!exp.isReturned || isCurrentMonth);
+        return inCycle && (exp.type == 'expense' || exp.type == null);
       }
       if (_filterType == 'income') {
-        return isCurrentMonth && exp.type == 'income';
+        return inCycle && exp.type == 'income';
       }
-      // 'all'
-      return isCurrentMonth;
+      return inCycle;
     }).toList();
 
-    // Sort
     result.sort((a, b) {
        int dateA = DateTime.parse(a.date).millisecondsSinceEpoch;
        int dateB = DateTime.parse(b.date).millisecondsSinceEpoch;
        if (dateA != dateB) return dateB - dateA;
        
-       // Secondary sort by createdAt
        final tA = a.createdAt?.millisecondsSinceEpoch ?? 0;
        final tB = b.createdAt?.millisecondsSinceEpoch ?? 0;
        
@@ -156,52 +200,117 @@ class ExpenseProvider with ChangeNotifier {
        return tB - tA;
     });
 
+    // Secondary filter optimization
+    if (_filterType == 'expense') {
+      result = result.where((e) => e.type == 'expense' || e.type == null).toList();
+    } else if (_filterType == 'income') {
+      result = result.where((e) => e.type == 'income').toList();
+    } else if (_filterType == 'loan') {
+       result = result.where((e) => e.type == 'loan').toList();
+    }
+    
+    // Inject Rollover (only for 'all' or specific view logic)
+    // User wants to see it as a transaction.
+    if (_filterType == 'all' || _filterType == 'income') { // Maybe show in income/all?
+      final rollover = _currentRolloverAmount;
+      if (rollover > 0) {
+        int prevMonth = _selectedMonth - 1;
+        if (prevMonth < 0) prevMonth = 11;
+        
+        result.insert(0, ExpenseModel( // Add to top or sort? If we sort by date, this is Start Date
+          id: 'rollover_virtual', // Unique virtual ID
+          amount: rollover,
+          category: 'Rollover',
+          date: currentCycleStart.toIso8601String(),
+          type: 'rollover',
+          description: 'Remaining Balance from ${Utils.getMonthName(prevMonth)}',
+        ));
+      }
+    }
+
     return result;
   }
 
-  // Dashboard Stats
+  // --- Rollover Logic ---
+  
+  double get _currentRolloverAmount {
+    // 1. Determine Previous Month
+    int prevMonth = _selectedMonth - 1;
+    int prevYear = _selectedYear;
+    if (prevMonth < 0) {
+      prevMonth = 11;
+      prevYear--;
+    }
+
+    // 2. Get Settings & Range for Prev Month
+    final settings = _getEffectiveSettings(prevYear, prevMonth);
+    final start = getCycleStartDate(prevYear, prevMonth);
+    // End of prev cycle is one day before start of current cycle
+    final end = currentCycleStart.subtract(const Duration(days: 1)); // or Duration(seconds: 1) if we want exact check, but day comparison is safer
+
+    // 3. Filter Expenses for Prev Month
+    final prevExpenses = _expenses.where((exp) {
+       final d = DateTime.parse(exp.date);
+       final target = DateTime(d.year, d.month, d.day);
+       return (target.isAfter(start) || target.isAtSameMomentAs(start)) && 
+              (target.isBefore(end) || target.isAtSameMomentAs(end));
+    });
+
+    // 4. Calculate Balance
+    double income = 0;
+    double spent = 0;
+    for (var e in prevExpenses) {
+       if (e.type == 'income') income += e.amount;
+       else if (e.type == 'loan') spent += e.amount; 
+       else spent += e.amount;
+    }
+    
+    final balance = (settings.salary + income) - spent;
+    return balance > 0 ? balance : 0.0;
+  }
+
   Map<String, double> get dashboardStats {
-    final monthlyExpenses = _expenses.where((exp) {
-      final d = DateTime.parse(exp.date);
-      return (d.month - 1) == _selectedMonth && d.year == _selectedYear;
+    final cycleExpenses = _expenses.where((exp) {
+      return isInCurrentCycle(DateTime.parse(exp.date));
     });
 
     double totalSpent = 0;
     double totalIncome = 0;
 
-    for (var curr in monthlyExpenses) {
+    for (var curr in cycleExpenses) {
        if (curr.type == 'income') {
          totalIncome += curr.amount;
        } else if (curr.type == 'loan') {
-         final returned = curr.returnedAmount; 
-         // cost = amount - returned
-         totalSpent += (curr.amount - returned);
+         totalSpent += curr.amount;
        } else {
          totalSpent += curr.amount;
        }
     }
 
-    final remaining = (_salary + totalIncome) - totalSpent;
+    final rollover = _currentRolloverAmount;
+    // Remaining = (Salary + Income + Rollover) - Spent
+    final remaining = (currentCycleSalary + totalIncome + rollover) - totalSpent;
 
     return {
       'totalSpent': totalSpent,
-      'totalIncome': totalIncome,
+      'totalIncome': totalIncome, // We keep this pure
       'remaining': remaining,
+      'rollover': rollover, // Exposed if needed
     };
   }
 
-  // Chart Data
+  // ... (ChartData remains as is, logic relies on visible expenses) ...
   List<Map<String, dynamic>> get chartData {
     final Map<String, double> categoryMap = {};
+    final cycleExpenses = _expenses.where((exp) {
+       return isInCurrentCycle(DateTime.parse(exp.date));
+    });
 
-    for (var curr in filteredExpenses) {
+    for (var curr in cycleExpenses) {
       if (curr.type == 'income') continue;
 
       if (curr.type == 'loan') {
-        if (curr.isReturned) continue;
-        double cost = curr.amount - curr.returnedAmount;
-        if (cost <= 0) continue;
-        categoryMap['Loan'] = (categoryMap['Loan'] ?? 0) + cost;
+        categoryMap['Loan'] = (categoryMap['Loan'] ?? 0) + curr.amount;
       } else {
         categoryMap[curr.category] = (categoryMap[curr.category] ?? 0) + curr.amount;
       }
@@ -215,7 +324,9 @@ class ExpenseProvider with ChangeNotifier {
     return result;
   }
 
-  // Actions delegate
+
+  // --- Actions ---
+
   Future<void> addExpense(ExpenseModel expense) async {
     if (userId == null) return;
     await _firestoreService.addExpense(userId!, expense);
@@ -231,20 +342,52 @@ class ExpenseProvider with ChangeNotifier {
     final newReturned = loan.returnedAmount + amountToAdd;
     final isFullyReturned = newReturned >= loan.amount;
     
+    // 1. Update Loan
     await _firestoreService.updateExpense(userId!, loan.id, {
       'returnedAmount': newReturned,
       'isReturned': isFullyReturned,
     });
+
+    // 2. Create Income Transaction for the Repayment Amount
+    // This ensures the money is added to the current month's flow
+    final incomeTx = ExpenseModel(
+       id: '', 
+       amount: amountToAdd,
+       category: 'Loan Repayment',
+       date: DateTime.now().toIso8601String(),
+       type: 'income',
+       description: isFullyReturned ? 'Repayment for ${loan.category}' : 'Partial Repayment for ${loan.category}',
+    );
+    await addExpense(incomeTx);
   }
 
   Future<void> setLoanReturned(ExpenseModel loan, bool isReturned) async {
     if (userId == null) return;
+    
+    // 1. Update the Loan Status
     await _firestoreService.updateExpense(userId!, loan.id, {
       'isReturned': isReturned,
-      // If marking as returned, set returnedAmount to full amount
-      // If marking as un-returned, should we reset? Let's say yes for simplicity, or 0.
+      // We keep returnedAmount as 0 on the loan itself so it still counts as a full expense in history?
+      // User said "if i retrieve the loan in february the amount of the loan should bee added in february"
+      // This implies the original loan stays as a "cost" in December.
+      // So we do NOT change returnedAmount on the loan to "cancel" the cost.
+      // We just mark it as returned for UI status.
       'returnedAmount': isReturned ? loan.amount : 0.0, 
     });
+
+    // 2. If we are marking it as RETURNED (not un-returning), add an INCOME transaction
+    // to the CURRENT cycle.
+    if (isReturned) {
+       final incomeTx = ExpenseModel(
+         id: '', // Generated by Firestore
+         amount: loan.amount,
+         category: 'Loan Repayment',
+         date: DateTime.now().toIso8601String(), // NOW
+         type: 'income',
+         description: 'Repayment for ${loan.category}',
+       );
+       await addExpense(incomeTx);
+    }
   }
 
   Future<void> deleteExpense(String id) async {
@@ -252,10 +395,25 @@ class ExpenseProvider with ChangeNotifier {
     await _firestoreService.deleteExpense(userId!, id);
   }
   
-  Future<void> updateSalary(double val) async {
-    if (userId == null) return;
-    await _firestoreService.updateSalary(userId!, val);
+  // New Methods for Settings
+  
+  Future<void> updateDefaultSalary(double val) async {
+     if (userId == null) return;
+     await _firestoreService.updateSettings(userId!, {'defaultSalary': val});
   }
+  
+  Future<void> updateDefaultStartDay(int day) async {
+     if (userId == null) return;
+     await _firestoreService.updateSettings(userId!, {'defaultStartDay': day});
+  }
+  
+  Future<void> updateMonthlyOverride(int year, int month, double salary, int day, int offset) async {
+    if (userId == null) return;
+    final settings = MonthlySettings(salary: salary, startDay: day, monthOffset: offset);
+    // month 0-11 -> 1-12
+    await _firestoreService.updateMonthlyOverride(userId!, year, month + 1, settings);
+  }
+
   
   Future<void> addCategory(CategoryModel cat) async {
      if (userId == null) return;

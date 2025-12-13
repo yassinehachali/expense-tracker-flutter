@@ -2,16 +2,37 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/expense_provider.dart';
 import '../../data/services/update_service.dart';
 import 'category_screen.dart';
 import '../../core/utils.dart';
 
-class SettingsScreen extends StatelessWidget {
+import '../../core/global_events.dart';
+
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
   @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  
+  @override
+  void initState() {
+    super.initState();
+    GlobalEvents.stream.listen((event) {
+       if (event == 'open_update_check' && mounted) {
+          // Small delay to ensure tab switch animation is done/frame is ready
+          Future.delayed(const Duration(milliseconds: 300), () {
+            if (mounted) _checkForUpdates(context);
+          });
+       }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     try {
@@ -40,8 +61,8 @@ class SettingsScreen extends StatelessWidget {
             // Salary Configuration
             ListTile(
               leading: const Icon(LucideIcons.briefcase),
-              title: const Text('Monthly Salary'),
-              subtitle: Text(Utils.formatCurrency(expenseProvider.salary)),
+              title: const Text('Salary & Cycle'),
+              subtitle: Text("${Utils.formatCurrency(expenseProvider.currentCycleSalary)} (${Utils.formatDate(expenseProvider.currentCycleStart)} - ${Utils.formatDate(expenseProvider.currentCycleEnd)})"),
               trailing: const Icon(Icons.chevron_right),
               onTap: () {
                 _showSalaryDialog(context, expenseProvider);
@@ -97,6 +118,26 @@ class SettingsScreen extends StatelessWidget {
                 await auth.signOut();
               },
             ),
+            
+            const SizedBox(height: 24),
+            FutureBuilder<PackageInfo>(
+              future: PackageInfo.fromPlatform(),
+              builder: (context, snapshot) {
+                if (snapshot.hasData) {
+                  return Center(
+                    child: Text(
+                      "v${snapshot.data!.version}",
+                      style: TextStyle(
+                        color: theme.brightness == Brightness.dark ? Colors.grey[600] : Colors.grey[400],
+                        fontSize: 12
+                      ),
+                    ),
+                  );
+                }
+                return const SizedBox.shrink();
+              },
+            ),
+            const SizedBox(height: 24),
           ],
         ),
       );
@@ -113,28 +154,125 @@ class SettingsScreen extends StatelessWidget {
   }
 
   void _showSalaryDialog(BuildContext context, ExpenseProvider provider) {
-    // ... existing implementation ...
-    final controller = TextEditingController(text: provider.salary.toString());
+    // Current Dashboard Context
+    final selectedYear = provider.selectedYear;
+    final selectedMonth = provider.selectedMonth; // 0-indexed
+    final monthName = Utils.getMonthName(selectedMonth);
+
+    // Initial Values (From currently effective settings)
+    final initialSalary = provider.currentCycleSalary;
+    final initialStart = provider.currentCycleStart; // This is the calculated start date
+    // We need to reverse engineer the 'day' and 'offset' from the effective settings logic
+    // But better to just expose the raw settings if possible.
+    // Since we don't expose the raw settings object, we'll infer:
+    // If start date is in previous month -> Offset -1
+    // If start date is in current month -> Offset 0
+    
+    int initialDay = initialStart.day;
+    int initialOffset = (initialStart.month == (selectedMonth + 1)) ? 0 : -1;
+    // Edge case: Year boundary (Jan selected, starts in Dec)
+    if (selectedMonth == 0 && initialStart.month == 12) initialOffset = -1;
+
+    final controller = TextEditingController(text: initialSalary.toString());
+    int selectedDay = initialDay;
+    int selectedOffset = initialOffset; // 0 = Same Month, -1 = Prev Month
+
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Update Salary"),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(labelText: "Salary Amount", prefixText: "DH "),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
-          TextButton(
-            onPressed: () async {
-              final val = double.tryParse(controller.text) ?? 0;
-              await provider.updateSalary(val);
-              if (ctx.mounted) Navigator.pop(ctx);
-            }, 
-            child: const Text("Save")
-          ),
-        ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setState) {
+          // Dynamic Label for "Start Month"
+          // If offset 0: "November"
+          // If offset -1: "October"
+          final startMonthIndex = (selectedMonth + selectedOffset) % 12;
+          // Handle negative modulo in Dart? (0-1 = -1)
+          final normalizedIndex = startMonthIndex < 0 ? 12 + startMonthIndex : startMonthIndex;
+          
+          final startMonthName = Utils.getMonthName(normalizedIndex);
+
+          return AlertDialog(
+            title: Text("Cycle for $monthName $selectedYear"),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                   const Text(
+                    "Customize the salary and start date for this specific month.",
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: controller,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: "Salary Amount", 
+                      prefixText: "DH "
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text("Cycle Starts In:"),
+                  Row(
+                    children: [
+                      // Month Selector (Prev vs Current)
+                      DropdownButton<int>(
+                        value: selectedOffset,
+                        items: [
+                          DropdownMenuItem(value: -1, child: Text(Utils.getMonthName((selectedMonth - 1) < 0 ? 11 : selectedMonth - 1))),
+                          DropdownMenuItem(value: 0, child: Text(monthName)),
+                        ],
+                        onChanged: (val) {
+                          if (val != null) setState(() => selectedOffset = val);
+                        },
+                      ),
+                      const SizedBox(width: 12),
+                      // Day Selector
+                      DropdownButton<int>(
+                        value: selectedDay,
+                        items: List.generate(28, (index) => index + 1).map((day) {
+                          return DropdownMenuItem(
+                            value: day,
+                            child: Text("Day $day"),
+                          );
+                        }).toList(),
+                        onChanged: (val) {
+                          if (val != null) setState(() => selectedDay = val);
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  
+                  // Helper Text
+                  Text(
+                    "This cycle will start on $startMonthName $selectedDay.",
+                     style: const TextStyle(fontSize: 12, color: Colors.indigo),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
+              TextButton(
+                onPressed: () async {
+                  final val = double.tryParse(controller.text) ?? 0;
+                  
+                  // Save as override for this month
+                  await provider.updateMonthlyOverride(
+                    selectedYear, 
+                    selectedMonth, 
+                    val, 
+                    selectedDay, 
+                    selectedOffset
+                  );
+                  
+                  if (ctx.mounted) Navigator.pop(ctx);
+                }, 
+                child: const Text("Save")
+              ),
+            ],
+          );
+        }
       ),
     );
   }

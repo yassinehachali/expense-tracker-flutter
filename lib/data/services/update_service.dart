@@ -6,6 +6,7 @@ import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:flutter/foundation.dart';
+import 'notification_service.dart';
 
 class UpdateService {
   static const String _repoOwner = "yassinehachali";
@@ -111,6 +112,30 @@ class UpdateService {
       return result.message; // Return the error message
     }
     return null; // Success
+  }
+
+  // --- Background Helper ---
+  
+  static Future<void> checkAndNotify() async {
+    print("Background Update Check Started");
+    try {
+      final service = UpdateService();
+      final result = await service.checkForUpdate();
+      
+      if (result != null && result['updateAvailable'] == true) {
+        final version = result['version'];
+        final changelog = result['changelog']; // Can be long, maybe truncate
+        
+        await NotificationService().showUpdateNotification(
+          version,
+          "New version $version available! Tap to upate.",
+        );
+      } else {
+        print("No update found in background.");
+      }
+    } catch (e) {
+      print("Background Check Error: $e");
+    }
   }
 }
 

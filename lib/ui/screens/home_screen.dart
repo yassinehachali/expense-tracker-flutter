@@ -1,6 +1,8 @@
-// File: lib/ui/screens/home_screen.dart
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import '../../core/global_events.dart';
+import '../../providers/expense_provider.dart';
 import 'dashboard_screen.dart';
 import 'transactions_screen.dart';
 import 'settings_screen.dart'; // Will be created next
@@ -22,9 +24,52 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  @override
+  void initState() {
+    super.initState();
+    // Listen for global navigation events
+    GlobalEvents.stream.listen((event) {
+      if (event == 'open_update_check') {
+        if (mounted) {
+           _onItemTapped(2); // Switch to Settings
+        }
+      }
+    });
+  }
+
   void _openAddExpense() {
+    final provider = Provider.of<ExpenseProvider>(context, listen: false);
+    final now = DateTime.now();
+    
+    // Determine the smart initial date
+    // If we are viewing a specific month (e.g. Dec), we want the date to default to that month.
+    // Logic: 
+    // 1. Get current cycle range for the selected view.
+    // 2. If 'now' is inside that range, use 'now'.
+    // 3. If 'now' is outside, default to the start or end of that range (clamped).
+    
+    final start = provider.currentCycleStart;
+    final end = provider.currentCycleEnd;
+    
+    DateTime initialDate = now;
+    
+    // Check if 'now' is outside the range
+    // We add 1 day to end for comparison to include the full end day if times are midnight
+    // But provider.currentCycleEnd is already "last day". 
+    // Let's just compare YMD.
+    
+    if (now.isBefore(start)) {
+      initialDate = start;
+    } else if (now.isAfter(end.add(const Duration(days: 1)).subtract(const Duration(seconds: 1)))) {
+       // If now is AFTER the cycle end (e.g. today is Jan, view is Dec)
+       // We default to the last day of the cycle.
+       initialDate = end;
+    }
+  
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (context) => const AddExpenseScreen()),
+      MaterialPageRoute(
+        builder: (context) => AddExpenseScreen(initialDate: initialDate),
+      ),
     );
   }
 
