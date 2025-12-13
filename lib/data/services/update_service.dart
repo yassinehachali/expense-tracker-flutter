@@ -85,7 +85,7 @@ class UpdateService {
   // Downloads the APK and returns the file path
   Future<String?> downloadUpdate(String url, Function(double progress) onProgress) async {
     try {
-      final dir = await getApplicationDocumentsDirectory();
+      final dir = await getTemporaryDirectory();
       final filePath = "${dir.path}/update.apk";
       
       await Dio().download(
