@@ -87,6 +87,8 @@ class ExpenseCard extends StatelessWidget {
         child: const Icon(LucideIcons.trash2, color: Colors.white),
       ),
       confirmDismiss: (direction) async {
+        if (expense.type == 'rollover') return true; // Instant delete for rollover (ignore)
+        
         return await showDialog(
           context: context,
           builder: (ctx) => AlertDialog(

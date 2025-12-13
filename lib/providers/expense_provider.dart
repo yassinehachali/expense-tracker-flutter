@@ -242,12 +242,10 @@ class ExpenseProvider with ChangeNotifier {
     }
     
     // Check if user has deleted/ignored this specific rollover
-    // Key format: "YYYY-MM" (of the CURRENT view being rolled INTO)
-    // Wait, if I delete the rollover shown in Feb (which is Jan's balance), do I ignore "Feb" or "Jan"?
-    // The transaction is shown in the current month. "Rollover FROM Jan".
-    // I should probably key it by the current month so it's easy to look up "Do I show rollover for this month?".
     final currentKey = "$_selectedYear-${_selectedMonth + 1}";
+    // print("DEBUG: Rollover Check Key: $currentKey, Ignored List: ${_settings.ignoredRollovers}");
     if (_settings.ignoredRollovers.contains(currentKey)) {
+      // print("DEBUG: Rollover IGNORED for $currentKey");
       return 0.0;
     }
 
@@ -442,6 +440,7 @@ class ExpenseProvider with ChangeNotifier {
     final newIgnored = List<String>.from(_settings.ignoredRollovers);
     if (!newIgnored.contains(key)) {
       newIgnored.add(key);
+      
       _settings = UserSettingsModel(
          defaultSalary: _settings.defaultSalary,
          defaultStartDay: _settings.defaultStartDay,

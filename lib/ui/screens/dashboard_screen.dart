@@ -404,14 +404,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         bottom: false, // Ignore the bottom (keyboard/home bar) area
                         child: Wrap(
                           children: [
-                            ListTile(
-                              leading: const Icon(Icons.edit),
-                              title: const Text("Edit Transaction"),
-                              onTap: () {
-                                Navigator.pop(ctx);
-                                Navigator.push(context, MaterialPageRoute(builder: (_) => AddExpenseScreen(expenseToEdit: expense)));
-                              },
-                            ),
+                            if (expense.type != 'rollover')
+                              ListTile(
+                                leading: const Icon(Icons.edit),
+                                title: const Text("Edit Transaction"),
+                                onTap: () {
+                                  Navigator.pop(ctx);
+                                  Navigator.push(context, MaterialPageRoute(builder: (_) => AddExpenseScreen(expenseToEdit: expense)));
+                                },
+                              ),
                             if (expense.type == 'loan' && !expense.isReturned)
                               ListTile(
                                 leading: const Icon(LucideIcons.banknote, color: Colors.green),
@@ -426,7 +427,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               title: const Text("Delete Transaction", style: TextStyle(color: Colors.red)),
                               onTap: () async {
                                 Navigator.pop(ctx);
-                                await provider.deleteExpense(expense.id);
+                                if (expense.type == 'rollover') {
+                                   await provider.ignoreRollover(provider.selectedYear, provider.selectedMonth);
+                                } else {
+                                   await provider.deleteExpense(expense.id);
+                                }
                               },
                             ),
                           ],

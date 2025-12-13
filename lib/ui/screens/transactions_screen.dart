@@ -171,26 +171,31 @@ class TransactionsScreen extends StatelessWidget {
                                                 await provider.setLoanReturned(expense, !expense.isReturned);
                                               },
                                             ),
-                                          ListTile(
-                                            leading: const Icon(Icons.edit),
-                                            title: const Text("Edit Transaction"),
-                                            onTap: () {
-                                              Navigator.pop(ctx);
-                                              Navigator.push(context, MaterialPageRoute(builder: (_) => AddExpenseScreen(expenseToEdit: expense)));
-                                            },
-                                          ),
+                                          if (expense.type != 'rollover') // Rollover is not editable
+                                            ListTile(
+                                              leading: const Icon(Icons.edit),
+                                              title: const Text("Edit Transaction"),
+                                              onTap: () {
+                                                Navigator.pop(ctx);
+                                                Navigator.push(context, MaterialPageRoute(builder: (_) => AddExpenseScreen(expenseToEdit: expense)));
+                                              },
+                                            ),
                                           ListTile(
                                             leading: const Icon(Icons.delete, color: Colors.red),
                                             title: const Text("Delete Transaction", style: TextStyle(color: Colors.red)),
                                             onTap: () async {
                                               Navigator.pop(ctx);
-                                              await provider.deleteExpense(expense.id);
+                                              if (expense.type == 'rollover') {
+                                                 await provider.ignoreRollover(provider.selectedYear, provider.selectedMonth);
+                                              } else {
+                                                 await provider.deleteExpense(expense.id);
+                                              }
                                             },
                                           ),
                                         ],
                                     ),
-                                  ),
-                                );
+                                    ),
+                                  );
                               },
                             ),
                           )),
