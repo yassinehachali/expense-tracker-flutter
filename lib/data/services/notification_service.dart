@@ -1,7 +1,7 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
-import 'package:flutter_timezone/flutter_timezone.dart';
+import 'package:flutter/services.dart'; // For MethodChannel
 import '../../core/app_strings.dart'; 
 
 class NotificationService {
@@ -14,6 +14,8 @@ class NotificationService {
   NotificationService._internal();
 
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+  
+  static const platform = MethodChannel('com.example.expense_tracker/timezone');
 
   bool _isInitialized = false;
 
@@ -23,12 +25,10 @@ class NotificationService {
     // Initialize Time Zones
     tz.initializeTimeZones();
     try {
-      final String timeZoneName = await FlutterTimezone.getLocalTimezone();
+      final String timeZoneName = await platform.invokeMethod('getLocalTimezone');
       tz.setLocalLocation(tz.getLocation(timeZoneName));
     } catch (e) {
       print("Could not get local timezone: $e");
-      // Fallback to UTC or system default which might be initialized
-      // tz.setLocalLocation(tz.getLocation('UTC')); // Optional fallback
     }
 
     // Android Setup
