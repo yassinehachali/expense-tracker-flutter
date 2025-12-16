@@ -7,6 +7,7 @@ import '../../data/models/expense_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/expense_provider.dart';
 import '../../core/constants.dart';
+import '../../core/app_strings.dart'; // Add import
 import '../widgets/glass_container.dart';
 import '../widgets/category_icon.dart';
 
@@ -58,7 +59,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     if (amountText.isEmpty) return;
     final amount = double.tryParse(amountText);
     if (amount == null || amount <= 0) {
-       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please enter a valid amount")));
+       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text(AppStrings.invalidAmount)));
        return;
     }
 
@@ -68,17 +69,19 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       final auth = Provider.of<AuthProvider>(context, listen: false);
       final expenseProvider = Provider.of<ExpenseProvider>(context, listen: false);
 
-      if (auth.user == null) throw Exception("User not logged in");
+      if (auth.user == null) throw Exception(AppStrings.userNotLoggedIn);
 
       final newExpense = ExpenseModel(
         id: widget.expenseToEdit?.id ?? '', 
         amount: amount,
-        category: _selectedType == 'expense' ? _selectedCategory : (_selectedType == 'income' ? 'Income' : 'Loan'),
+        category: _selectedType == 'expense' ? _selectedCategory : 
+                  (_selectedType == 'income' ? 'Income' : 
+                  (_selectedType == 'borrow' ? 'Borrowed' : 'Lending')),
         date: _selectedDate.toIso8601String(),
         description: _descriptionController.text.trim(),
         type: _selectedType,
         isReturned: false, 
-        loanee: _selectedType == 'loan' ? _descriptionController.text.trim() : null,
+        loanee: (_selectedType == 'loan' || _selectedType == 'borrow') ? _descriptionController.text.trim() : null,
       );
 
       if (widget.expenseToEdit != null) {
@@ -90,15 +93,14 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       if (!mounted) return;
       
       Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(widget.expenseToEdit != null ? "Transaction updated!" : "Transaction saved!")));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(widget.expenseToEdit != null ? AppStrings.transactionUpdated : AppStrings.transactionSaved)));
       
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false); // Stop loading only on error
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("${AppStrings.errorPrefix}$e")));
       }
     } 
-    // Removed finally block that indiscriminately called setState
   }
 
   @override
@@ -108,26 +110,11 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     final expenseProvider = Provider.of<ExpenseProvider>(context);
     final allCategories = expenseProvider.categories;
     
-    // Ensure selected category is valid
-    if (!allCategories.any((c) => c.name == _selectedCategory)) {
-      if (allCategories.isNotEmpty) {
-        // If current selection is invalid (e.g. deleted), reset to first available
-        // But we must do this carefully to avoid build-time setState causing errors.
-        // For now, let's just use the first one if not matched, but we can't setState during build.
-        // We will just display it properly in the Dropdown value if feasible, or handle efficiently.
-        // Best approach: check in build if selection is valid, if not, pick the first valid one for the *display* (value) 
-        // but updating the state _selectedCategory is tricky in build.
-        // A safer way: rely on the value being present or fallback to allCategories[0].name
-      }
-    }
-    
-    // Fallback logic for Dropdown value
+    // Ensure selected category is valid logic remains same (omitted comments for brevity)
     String currentDropdownValue = _selectedCategory;
     if (!allCategories.any((c) => c.name == currentDropdownValue)) {
       if (allCategories.isNotEmpty) {
         currentDropdownValue = allCategories[0].name;
-        // Ideally scheduling a microtask to update state would be better, 
-        // but for now this visual fix allows the dropdown to render without crash.
       }
     }
     
@@ -135,7 +122,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       backgroundColor: theme.scaffoldBackgroundColor, // Ensure consistent background
       resizeToAvoidBottomInset: false, // Prevents keyboard from pushing/resizing layout
       appBar: AppBar(
-        title: Text(widget.expenseToEdit != null ? "Edit Transaction" : "Add Transaction"),
+        title: Text(widget.expenseToEdit != null ? AppStrings.editTransaction : AppStrings.addTransaction),
         centerTitle: true,
       ),
       body: SingleChildScrollView(
@@ -149,19 +136,25 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
               child: Row(
                 children: [
                   _TypeTab(
-                    label: "Expense", 
+                    label: AppStrings.filterExpenses, 
                     icon: LucideIcons.receipt, // or Banknote
                     isSelected: _selectedType == 'expense', 
                     onTap: () => setState(() => _selectedType = 'expense')
                   ),
                   _TypeTab(
-                    label: "Loan", 
+                    label: AppStrings.filterLoans, 
                     icon: Icons.handshake, 
                     isSelected: _selectedType == 'loan', 
                     onTap: () => setState(() => _selectedType = 'loan')
                   ),
                   _TypeTab(
-                    label: "Income", 
+                    label: AppStrings.borrow, 
+                    icon: LucideIcons.coins, 
+                    isSelected: _selectedType == 'borrow', 
+                    onTap: () => setState(() => _selectedType = 'borrow')
+                  ),
+                  _TypeTab(
+                    label: AppStrings.filterIncome, 
                     icon: LucideIcons.wallet, 
                     isSelected: _selectedType == 'income', 
                     onTap: () => setState(() => _selectedType = 'income')
@@ -174,8 +167,8 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
             // Amount Input
             _CustomTextField(
               controller: _amountController,
-              label: "Amount",
-              hint: "0.00",
+              label: AppStrings.amountLabel,
+              hint: AppStrings.amountHint,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               icon: LucideIcons.dollarSign,
             ),
@@ -185,8 +178,11 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
             // Description / Loan To Input
             _CustomTextField(
               controller: _descriptionController,
-              label: _selectedType == 'loan' ? "Person Name" : "Description (Optional)",
-              hint: _selectedType == 'loan' ? "Who is this loan for?" : "What is this for?",
+              label: (_selectedType == 'loan' || _selectedType == 'borrow') ? 
+                      (_selectedType == 'borrow' ? AppStrings.descLabelLoan : AppStrings.descLabelLoan) // Use same label 'Person Name'
+                      : AppStrings.descLabel,
+              hint: _selectedType == 'loan' ? AppStrings.descHintLoan : 
+                    (_selectedType == 'borrow' ? AppStrings.descHintBorrow : AppStrings.descHint),
               icon: LucideIcons.fileText,
             ),
 
@@ -197,7 +193,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text("Category", style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Text(AppStrings.categoryLabel, style: TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -257,7 +253,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                      Column(
                        crossAxisAlignment: CrossAxisAlignment.start,
                        children: [
-                         const Text("Date", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                         const Text(AppStrings.dateLabel, style: TextStyle(fontSize: 12, color: Colors.grey)),
                          Text(DateFormat.yMMMd().format(_selectedDate), style: const TextStyle(fontWeight: FontWeight.bold)),
                        ],
                      ),
@@ -285,7 +281,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                  ),
                  child: _isLoading 
                     ? const CircularProgressIndicator(color: Colors.white) 
-                    : const Text("Save Transaction", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    : const Text(AppStrings.saveTransaction, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                ),
              ),
           ],

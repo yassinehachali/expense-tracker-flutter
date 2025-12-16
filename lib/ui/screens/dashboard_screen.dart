@@ -1,5 +1,6 @@
 // File: lib/ui/screens/dashboard_screen.dart
 import 'package:flutter/material.dart';
+import '../../core/app_strings.dart'; // Add import
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -533,7 +534,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   _CategoryDetails _getCategoryDetails(Map<String, dynamic> data, ExpenseProvider provider) {
       final name = data['name'] as String;
       final value = (data['value'] as num).toDouble();
-      final isLoan = name.toLowerCase() == 'loan';
+      final isLoan = name.toLowerCase() == 'loan' || name.toLowerCase() == 'lending';
       final isIncome = name.toLowerCase() == 'income';
       
       Color color;
@@ -542,6 +543,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (isLoan) {
         color = Colors.orange;
         iconKey = 'Handshake';
+      } else if (name == 'Borrow Repayment') {
+        color = Colors.orangeAccent;
+        iconKey = 'Coins';
       } else if (isIncome) {
         color = Colors.green;
         iconKey = 'Wallet';
@@ -573,7 +577,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text("Total Loan: ${Utils.formatCurrency(expense.amount)}"),
+            Text("${AppStrings.totalLoan}${Utils.formatCurrency(expense.amount)}"),
             Text("Remaining: ${Utils.formatCurrency(remaining)}"),
             const SizedBox(height: 16),
             TextField(

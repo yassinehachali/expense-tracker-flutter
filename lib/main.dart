@@ -41,30 +41,37 @@ void main() async {
   
   // Background Updates are for Android/iOS only, not Web
   if (!kIsWeb) {
-    // Initialize Notification Service
-    final notificationService = NotificationService();
-    await notificationService.init((NotificationResponse response) {
-       // Handle tap
-       if (response.payload == 'update_check') {
-          GlobalEvents.trigger('open_update_check');
-       }
-    });
+    try {
+      // Initialize Notification Service
+      final notificationService = NotificationService();
+      await notificationService.init((NotificationResponse response) {
+         // Handle tap
+         if (response.payload == 'update_check') {
+            GlobalEvents.trigger('open_update_check');
+         }
+      });
+      
+      // Schedule Daily Reminder (9 PM)
+      await notificationService.scheduleDailyNotification(21, 0);
 
-    // Initialize Workmanager
-    await Workmanager().initialize(
-        callbackDispatcher, 
-        isInDebugMode: false 
-    );
-    
-    // Register Periodic Task
-    await Workmanager().registerPeriodicTask(
-      "update_check_task",
-      "update_check_task",
-      frequency: const Duration(minutes: 15),
-      constraints: Constraints(
-        networkType: NetworkType.connected,
-      ),
-    );
+      // Initialize Workmanager
+      await Workmanager().initialize(
+          callbackDispatcher, 
+          isInDebugMode: false 
+      );
+      
+      // Register Periodic Task
+      await Workmanager().registerPeriodicTask(
+        "update_check_task",
+        "update_check_task",
+        frequency: const Duration(minutes: 15),
+        constraints: Constraints(
+          networkType: NetworkType.connected,
+        ),
+      );
+    } catch (e) {
+      print("Failed to initialize background services: $e");
+    }
   }
   
   runApp(const MyApp());

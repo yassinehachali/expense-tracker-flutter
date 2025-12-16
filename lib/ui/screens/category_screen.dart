@@ -1,6 +1,8 @@
 // File: lib/ui/screens/category_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../core/app_strings.dart';
+import '../../core/utils.dart';
 import '../../data/models/category_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../data/services/firestore_service.dart';
@@ -21,11 +23,8 @@ class _CategoryScreenState extends State<CategoryScreen> {
   final FirestoreService _firestoreService = FirestoreService();
   
   // List of available icons to choose from
-  final List<String> _availableIcons = [
-     'Home', 'Utensils', 'Car', 'Zap', 'Film', 'ShoppingBag', 'HeartPulse', 
-     'Dumbbell', 'Smartphone', 'Wifi', 'Briefcase', 'Gift', 'Plane', 
-     'GraduationCap', 'Coffee', 'Music', 'PawPrint', 'CreditCard'
-  ];
+  // List of available icons to choose from
+  final List<String> _availableIcons = Utils.availableIconKeys;
   
   String _selectedIcon = 'Home';
   Color _selectedColor = AppColors.palette[0];
@@ -36,14 +35,14 @@ class _CategoryScreenState extends State<CategoryScreen> {
     final theme = Theme.of(context);
     final uid = auth.user?.uid;
 
-    if (uid == null) return const Scaffold(body: Center(child: Text("Please login")));
+    if (uid == null) return const Scaffold(body: Center(child: Text(AppStrings.pleaseLogin)));
 
     return Scaffold(
-      appBar: AppBar(title: const Text("Manage Categories")),
+      appBar: AppBar(title: const Text(AppStrings.manageCategories)),
       body: StreamBuilder<List<CategoryModel>>(
         stream: _firestoreService.getCategoriesStream(uid),
         builder: (context, snapshot) {
-          if (snapshot.hasError) return Center(child: Text("Error: ${snapshot.error}"));
+          if (snapshot.hasError) return Center(child: Text("${AppStrings.errorPrefix}${snapshot.error}"));
           
           final customCategories = snapshot.data ?? [];
 
@@ -58,12 +57,12 @@ class _CategoryScreenState extends State<CategoryScreen> {
                    child: Column(
                      crossAxisAlignment: CrossAxisAlignment.start,
                      children: [
-                       const Text("Add New Category", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                       const Text(AppStrings.addNewCategory, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                        const SizedBox(height: 16),
                        TextField(
                          controller: _nameController,
                          decoration: InputDecoration(
-                           hintText: "Category Name",
+                           hintText: AppStrings.categoryNameHint,
                            filled: true,
                            fillColor: theme.cardColor,
                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -73,7 +72,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
                        const SizedBox(height: 16),
                        
                        // Color Picker
-                       const Text("Select Color", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                       const Text(AppStrings.selectColor, style: TextStyle(fontSize: 12, color: Colors.grey)),
                        const SizedBox(height: 8),
                        SizedBox(
                          height: 50,
@@ -109,7 +108,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
                        ),
                        const SizedBox(height: 16),
 
-                       const Text("Select Icon", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                       const Text(AppStrings.selectIcon, style: TextStyle(fontSize: 12, color: Colors.grey)),
                        const SizedBox(height: 8),
                        SizedBox(
                          height: 50,
@@ -173,7 +172,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                              padding: const EdgeInsets.symmetric(vertical: 16),
                            ),
-                           child: const Text("Create Category"),
+                           child: const Text(AppStrings.createCategory),
                          ),
                        )
                      ],
@@ -181,11 +180,11 @@ class _CategoryScreenState extends State<CategoryScreen> {
                 ),
                 
                 const SizedBox(height: 32),
-                const Text("My Categories", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                const Text(AppStrings.myCategories, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                 const SizedBox(height: 16),
                 
                 if (customCategories.isEmpty)
-                   const Padding(padding: EdgeInsets.all(16), child: Text("No custom categories yet.")),
+                   const Padding(padding: EdgeInsets.all(16), child: Text(AppStrings.noCustomCategories)),
 
                 ListView.separated(
                   physics: const NeverScrollableScrollPhysics(),

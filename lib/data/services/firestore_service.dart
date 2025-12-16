@@ -2,7 +2,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/expense_model.dart';
 import '../models/category_model.dart';
+import '../models/category_model.dart';
 import '../models/user_settings_model.dart';
+import '../models/fixed_charge_model.dart';
 
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -40,6 +42,15 @@ class FirestoreService {
         .doc(uid)
         .collection('settings')
         .doc('categories');
+  }
+
+  CollectionReference _getFixedChargesRef(String uid) {
+    return _db
+        .collection('artifacts')
+        .doc(appId)
+        .collection('users')
+        .doc(uid)
+        .collection('fixed_charges');
   }
 
   // --- Streams ---
@@ -131,5 +142,28 @@ class FirestoreService {
       batch.delete(doc.reference);
     }
     await batch.commit();
+  }
+
+  // --- Fixed Charges ---
+
+  Stream<List<FixedChargeModel>> getFixedChargesStream(String uid) {
+    return _getFixedChargesRef(uid).snapshots().map((snapshot) {
+      return snapshot.docs.map((doc) => FixedChargeModel.fromFirestore(doc)).toList();
+    });
+  }
+
+  Future<void> addFixedCharge(String uid, FixedChargeModel charge) async {
+    await _getFixedChargesRef(uid).add({
+      ...charge.toMap(),
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> updateFixedCharge(String uid, FixedChargeModel charge) async {
+    await _getFixedChargesRef(uid).doc(charge.id).update(charge.toMap());
+  }
+
+  Future<void> deleteFixedCharge(String uid, String chargeId) async {
+    await _getFixedChargesRef(uid).doc(chargeId).delete();
   }
 }

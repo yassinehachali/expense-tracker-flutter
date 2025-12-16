@@ -5,8 +5,9 @@ import '../../core/global_events.dart';
 import '../../providers/expense_provider.dart';
 import 'dashboard_screen.dart';
 import 'transactions_screen.dart';
-import 'settings_screen.dart'; // Will be created next
+import 'settings_screen.dart';
 import 'add_expense_screen.dart';
+import '../../data/services/notification_service.dart'; 
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -24,6 +25,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  // ...
   @override
   void initState() {
     super.initState();
@@ -34,6 +36,17 @@ class _HomeScreenState extends State<HomeScreen> {
            _onItemTapped(2); // Switch to Settings
         }
       }
+    });
+
+    // Request Notification Permissions if needed (Android 13+)
+    Future.delayed(const Duration(seconds: 2), () {
+       if (mounted) {
+         try {
+           NotificationService().requestPermissions();
+         } catch (e) {
+           print("Permission request error: $e");
+         }
+       }
     });
   }
 

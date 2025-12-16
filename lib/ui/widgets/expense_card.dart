@@ -7,6 +7,7 @@ import '../../data/models/expense_model.dart';
 import '../../data/models/category_model.dart';
 import '../../core/constants.dart';
 import '../../core/utils.dart';
+import '../../core/app_strings.dart'; // Add import
 import '../../providers/expense_provider.dart';
 import '../widgets/glass_container.dart';
 import 'category_icon.dart';
@@ -29,12 +30,21 @@ class ExpenseCard extends StatelessWidget {
     bool isLoan = expense.type == 'loan';
     bool isRollover = expense.type == 'rollover'; // New Type
     
+    bool isBorrow = expense.type == 'borrow'; // New Type
+    
     // Strikethrough style for returned loans
     final bool isReturnedLoan = isLoan && expense.isReturned;
     
     if (isRollover) {
-      iconKey = 'History'; // or RefreshCcw
-      catColor = Colors.green; // User requested Green
+      iconKey = 'History'; 
+      catColor = Colors.green; 
+    } else if (isBorrow) {
+      iconKey = 'Coins';
+      catColor = Colors.green; // Borrowing is Green (Income-like)
+    } else if (expense.category == 'Borrow Repayment') {
+      iconKey = 'Coins'; 
+      // Expense remains Red by default logic below (amount formatting) or we can tint the bubble
+      catColor = Colors.orangeAccent; // Distinct from normal expenses? Or just let it be.
     } else if (isIncome) {
       iconKey = 'Wallet'; 
       catColor = Colors.green;
@@ -70,11 +80,7 @@ class ExpenseCard extends StatelessWidget {
       }
     }
 
-    // We allow deleting 'rollover' type now, which triggers 'ignoreRollover'
-    // So we assume everything is dismissible or handled in the Dismissible logic below.
-
     return Dismissible(
-      // ... dismissible logic ...
       key: Key(expense.id),
       direction: DismissDirection.endToStart,
       background: Container(
@@ -93,14 +99,14 @@ class ExpenseCard extends StatelessWidget {
           context: context,
           builder: (ctx) => AlertDialog(
             backgroundColor: theme.cardColor,
-            title: const Text("Delete Transaction?"),
-            content: const Text("This action cannot be undone."),
+            title: const Text(AppStrings.deleteConfirmationTitle),
+            content: const Text(AppStrings.deleteConfirmationBody),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancel")),
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text(AppStrings.cancel)),
               TextButton(
                 onPressed: () => Navigator.pop(ctx, true), 
                 style: TextButton.styleFrom(foregroundColor: Colors.red),
-                child: const Text("Delete")
+                child: const Text(AppStrings.deleteAction)
               ),
             ],
           ),
@@ -152,7 +158,7 @@ class ExpenseCard extends StatelessWidget {
                    ),
                    const SizedBox(height: 4),
                    Text(
-                     isReturnedLoan ? 'Loan Returned' : DateFormat.yMMMd().format(DateTime.parse(expense.date)),
+                     isReturnedLoan ? AppStrings.loanReturned : DateFormat.yMMMd().format(DateTime.parse(expense.date)),
                      style: theme.textTheme.bodySmall?.copyWith(
                        color: isReturnedLoan ? Colors.green : null
                      ),
@@ -166,10 +172,10 @@ class ExpenseCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  '${isIncome ? '+' : '-'} ${Utils.formatCurrency(expense.amount)}',
+                  '${(isIncome || isBorrow) ? '+' : '-'} ${Utils.formatCurrency(expense.amount)}',
                   style: theme.textTheme.bodyLarge?.copyWith(
                     fontWeight: FontWeight.bold,
-                    color: (isIncome || isReturnedLoan) ? Colors.green : Colors.red,
+                    color: (isIncome || isReturnedLoan || isBorrow) ? Colors.green : Colors.red,
                     decoration: isReturnedLoan ? TextDecoration.lineThrough : null,
                     decorationThickness: 2.0,
                   ),
@@ -178,7 +184,7 @@ class ExpenseCard extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
                     child: Text(
-                      'Returned: ${Utils.formatCurrency(expense.returnedAmount)}',
+                      '${AppStrings.returnedLabel}${Utils.formatCurrency(expense.returnedAmount)}',
                       style: TextStyle(fontSize: 10, color: Colors.grey[500]),
                     ),
                   )

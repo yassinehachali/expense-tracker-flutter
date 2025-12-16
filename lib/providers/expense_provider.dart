@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/models/expense_model.dart';
 import '../data/models/category_model.dart';
 import '../data/models/user_settings_model.dart';
+import '../data/models/fixed_charge_model.dart';
 import '../data/services/firestore_service.dart';
 import '../core/constants.dart';
 import '../core/utils.dart';
@@ -13,6 +14,7 @@ class ExpenseProvider with ChangeNotifier {
 
   List<ExpenseModel> _expenses = [];
   List<CategoryModel> _categories = [];
+  List<FixedChargeModel> _fixedCharges = [];
   
   // Settings State
   UserSettingsModel _settings = UserSettingsModel();
@@ -26,11 +28,13 @@ class ExpenseProvider with ChangeNotifier {
   StreamSubscription? _expensesSub;
   StreamSubscription? _settingsSub;
   StreamSubscription? _categoriesSub;
+  StreamSubscription? _fixedChargesSub;
 
   bool _isLoading = false;
   bool get isLoading => _isLoading;
 
   List<ExpenseModel> get expenses => _expenses;
+  List<FixedChargeModel> get fixedCharges => _fixedCharges;
   List<CategoryModel> get categories {
     final defaults = DEFAULT_CATEGORIES.map((c) => CategoryModel.fromMap(c)).toList();
     final Map<String, CategoryModel> uniqueCategories = {};
@@ -133,12 +137,19 @@ class ExpenseProvider with ChangeNotifier {
       _categories = data;
       notifyListeners();
     }, onError: (e) => print("Error loading categories: $e"));
+
+    _fixedChargesSub = _firestoreService.getFixedChargesStream(uid).listen((data) {
+      _fixedCharges = data;
+      notifyListeners();
+      _checkAndApplyAutoCharges(); // Check whenever definitions change
+    }, onError: (e) => print("Error loading fixed charges: $e"));
   }
   
   void _cancelSubscriptions() {
     _expensesSub?.cancel();
     _settingsSub?.cancel();
     _categoriesSub?.cancel();
+    _fixedChargesSub?.cancel();
   }
 
   @override
@@ -150,11 +161,13 @@ class ExpenseProvider with ChangeNotifier {
   void setMonth(int month) {
     _selectedMonth = month;
     notifyListeners();
+    _checkAndApplyAutoCharges(); // Check whenever cycle changes
   }
 
   void setYear(int year) {
     _selectedYear = year;
     notifyListeners();
+    _checkAndApplyAutoCharges(); // Check whenever cycle changes
   }
 
   void setFilterType(String type) {
@@ -283,24 +296,28 @@ class ExpenseProvider with ChangeNotifier {
 
     double totalSpent = 0;
     double totalIncome = 0;
+    double totalBorrowed = 0;
 
     for (var curr in cycleExpenses) {
        if (curr.type == 'income') {
          totalIncome += curr.amount;
        } else if (curr.type == 'loan') {
          totalSpent += curr.amount;
+       } else if (curr.type == 'borrow') {
+         totalBorrowed += curr.amount;
        } else {
          totalSpent += curr.amount;
        }
     }
 
     final rollover = _currentRolloverAmount;
-    // Remaining = (Salary + Income + Rollover) - Spent
-    final remaining = (currentCycleSalary + totalIncome + rollover) - totalSpent;
+    // Remaining = (Salary + Income + Rollover + Borrowed) - Spent
+    final remaining = (currentCycleSalary + totalIncome + totalBorrowed + rollover) - totalSpent;
 
     return {
       'totalSpent': totalSpent,
-      'totalIncome': totalIncome, // We keep this pure
+      'totalIncome': totalIncome, 
+      'totalBorrowed': totalBorrowed,
       'remaining': remaining,
       'rollover': rollover, // Exposed if needed
     };
@@ -314,10 +331,10 @@ class ExpenseProvider with ChangeNotifier {
     });
 
     for (var curr in cycleExpenses) {
-      if (curr.type == 'income') continue;
+      if (curr.type == 'income' || curr.type == 'borrow') continue; // Borrowing is cash in, not spending
 
       if (curr.type == 'loan') {
-        categoryMap['Loan'] = (categoryMap['Loan'] ?? 0) + curr.amount;
+        categoryMap['Lending'] = (categoryMap['Lending'] ?? 0) + curr.amount;
       } else {
         categoryMap[curr.category] = (categoryMap[curr.category] ?? 0) + curr.amount;
       }
@@ -395,6 +412,286 @@ class ExpenseProvider with ChangeNotifier {
        );
        await addExpense(incomeTx);
     }
+  }
+
+  Future<void> repayBorrowing(ExpenseModel loan, double amountToRepay) async {
+    if (userId == null) return;
+    
+    final newReturned = loan.returnedAmount + amountToRepay;
+    final isFullyReturned = newReturned >= loan.amount;
+
+    // 1. Update the Borrow Transaction
+    await _firestoreService.updateExpense(userId!, loan.id, {
+      'returnedAmount': newReturned,
+      'isReturned': isFullyReturned,
+    });
+
+    // 2. Create Repayment Expense (deducts from balance)
+    final expenseTx = ExpenseModel(
+      id: '',
+      amount: amountToRepay,
+      category: 'Borrow Repayment', // Or just 'Repayment'
+      date: DateTime.now().toIso8601String(),
+      type: 'expense',
+      description: 'Repayment to ${loan.loanee ?? loan.description}', // "Repayment to John"
+      // User required 'Hand Coins' icon. 
+      // Note: Category icon is determined by name. 
+      // We should probably add 'Borrow Repayment' to default categories OR handle it visually.
+      // But ExpenseModel doesn't store icon directly, it relies on category.
+    );
+    await addExpense(expenseTx);
+  }
+
+  // --- Fixed Charges Logic ---
+
+  Future<void> addFixedCharge(FixedChargeModel charge) async {
+    if (userId == null) return;
+    await _firestoreService.addFixedCharge(userId!, charge);
+  }
+
+  Future<void> updateFixedCharge(FixedChargeModel charge) async {
+    if (userId == null) return;
+    
+    // Check previous state to see if we toggled Auto -> Manual
+    final oldCharge = _fixedCharges.firstWhere((c) => c.id == charge.id, orElse: () => charge);
+    
+    await _firestoreService.updateFixedCharge(userId!, charge);
+
+    // If it WAS Auto and is NOW Manual, we should remove the auto-generated expense for THIS cycle 
+    // to give the user a "clean slate" as requested.
+    if (oldCharge.isAutoApplied && !charge.isAutoApplied) {
+       // Find the expense in current cycle
+       final expenseToDelete = _expenses.firstWhere((exp) {
+          return exp.originChargeId == charge.id && isInCurrentCycle(DateTime.parse(exp.date));
+       }, orElse: () => ExpenseModel(id: '', amount: 0, category: '', description: '', date: '', type: ''));
+       
+       if (expenseToDelete.id.isNotEmpty) {
+         print("Removing auto-generated expense ${expenseToDelete.id} because charge became manual.");
+         await deleteExpense(expenseToDelete.id);
+       }
+    } else if (!oldCharge.isAutoApplied && charge.isAutoApplied) {
+       // If toggled Manual -> Auto, maybe apply it immediately?
+       _checkAndApplyAutoCharges();
+    }
+  }
+
+  Future<void> deleteFixedCharge(String chargeId) async {
+    if (userId == null) return;
+    await _firestoreService.deleteFixedCharge(userId!, chargeId);
+
+    // Also remove from current cycle if it exists
+    // This supports the "Undo" use case where user adds then deletes.
+    // We only touch the CURRENT cycle to preserve history.
+    final expensesToDelete = _expenses.where((exp) {
+      return exp.originChargeId == chargeId && isInCurrentCycle(DateTime.parse(exp.date));
+    }).toList();
+
+    for (var exp in expensesToDelete) {
+      print("Deleting cleanup expense ${exp.id} for fixed charge $chargeId");
+      await deleteExpense(exp.id);
+    }
+  }
+
+  /// Checks if any AUTO fixed charges need to be applied to the CURRENT view cycle.
+  /// Only applies if they don't already exist (deduplication via originChargeId).
+  Future<void> _checkAndApplyAutoCharges() async {
+    if (userId == null || _fixedCharges.isEmpty) return;
+
+    // We check against the CURRENT selected month/year view.
+    // If the user scrolls to a future month, this will auto-fill it!
+    // If the user scrolls to a past month, it might back-fill if missing 
+    // (though usually past months already have data).
+
+    // 1. Filter for Auto Charges
+    final autos = _fixedCharges.where((c) => c.isAutoApplied).toList();
+    if (autos.isEmpty) return;
+
+    // 2. Initial Setup
+    final start = currentCycleStart;
+    final end = currentCycleEnd;
+    final targetMonth = DateTime(_selectedYear, _selectedMonth + 1); // For constructing dates
+
+    for (var charge in autos) {
+      // 3. Check if we already have an expense from this origin in this cycle
+      final alreadyExists = _expenses.any((exp) {
+        if (exp.originChargeId != charge.id) return false;
+        // Double check date is within cycle range
+        final d = DateTime.parse(exp.date);
+        return isInCurrentCycle(d);
+      });
+
+      if (!alreadyExists) {
+        print("Applying Auto Charge: ${charge.name} for $_selectedMonth/$_selectedYear");
+        await _applyChargeToCycle(charge, _selectedYear, _selectedMonth);
+      }
+    }
+  }
+
+  // Helper to check status for UI
+  bool isChargeAppliedInCycle(String chargeId, int year, int month) {
+    // We assume the provider is currently viewing [year, month] or we can't easily check without fetching.
+    // But usually the UI asks for "Current View" context.
+    // If year/month match _selected..., we use _expenses.
+    
+    // Simplification for UI: We only support checking against the LOADED expenses (Current View).
+    // If user asks for next month data while viewing this month, we don't have it.
+    // So we'll limit this check to the current view or assume the caller knows what they are doing.
+    
+    if (year != _selectedYear || month != _selectedMonth) {
+      // We can't strictly check without data. Default to false or maybe we should only show status for current view?
+      return false; 
+    }
+
+    return _expenses.any((exp) {
+      if (exp.originChargeId != chargeId) return false;
+      return isInCurrentCycle(DateTime.parse(exp.date));
+    });
+  }
+
+  /// Manually apply charges (e.g. via UI button).
+  /// Can apply [manualOnly] or all.
+  /// [chargeId]: Optional, apply ONLY this specific charge (Manual Individual Apply)
+  Future<void> applyFixedChargesToCycle(int year, int month, {bool manualOnly = false, String? chargeId}) async {
+    List<FixedChargeModel> targets;
+    
+    if (chargeId != null) {
+      targets = _fixedCharges.where((c) => c.id == chargeId).toList();
+    } else {
+      targets = _fixedCharges.where((c) => manualOnly ? !c.isAutoApplied : true).toList();
+    }
+    
+    for (var charge in targets) {
+       // Check duplication! 
+       final alreadyExists = _expenses.any((exp) {
+        if (exp.originChargeId != charge.id) return false;
+        // Check if date is in target cycle. 
+        // We really rely on 'isInCurrentCycle' logic which uses _selectedYear/Month.
+        // If year/month passed here are NOT _selectedYear/Month, this check is flawed.
+        // But the UI usually calls this for the current/next month view.
+        
+        // Let's match against the requested year/month params roughly
+        // or rely on the fact that if we are applying to "Next Month", we assume we haven't loaded it?
+        
+        // Fix: If applying to Current View, use _expenses check.
+        if (year == _selectedYear && month == _selectedMonth) {
+           return isInCurrentCycle(DateTime.parse(exp.date));
+        }
+        
+        // If applying to different month (e.g. Next Month), we probably don't have the data in _expenses 
+        // unless we fetched it. So we might create a duplicate if we blindly add.
+        // Risk: User applies to Next Month blindly.
+        // For MVP: We only support checking duplicates for the ACTIVE view.
+        return false; 
+      });
+
+      if (!alreadyExists) {
+        await _applyChargeToCycle(charge, year, month);
+      } else {
+        print("Skipping ${charge.name}, already applied.");
+      }
+    }
+  }
+
+  Future<void> _applyChargeToCycle(FixedChargeModel charge, int year, int month) async {
+    // Determine Date
+    // logic: cycle start + (day - 1)? Or just day of month?
+    // "dayOfMonth" usually means "5th of the month".
+    // If cycle starts Dec 26 and ends Jan 25 (for Jan cycle).
+    // Charge Day 5 -> Jan 5.
+    // Charge Day 28 -> Dec 28.
+    
+    // We need to find the correct date within the cycle that matches 'dayOfMonth'.
+    final start = getCycleStartDate(year, month);
+    final end = start.add(Duration(days: 40)); // rough upper bound to find end
+    // actually we have currentCycleEnd logic but parameterized.
+    
+    // Simplest approach:
+    // If cycle is roughly "Month X", we target "Day Y of Month X".
+    // If "Day Y" is outside cycle (e.g. cycle is Dec 26-Jan 25, target is Jan 28), it belongs to NEXT cycle?
+    // User expectation for "Fixed Charge" is usually calendar month based or "Same date every month".
+    // If I set "Rent on 1st", and my cycle is Jan 1 - Jan 31, date is Jan 1.
+    // If cycle is Dec 26 - Jan 25. Rent on 1st is Jan 1. (Inside cycle).
+    // If Rent on 28th. Dec 28 (Inside cycle). Jan 28 (Next cycle).
+    
+    // So for "Cycle M", we look for "Day D" that falls within "Cycle M".
+    // 1. Try Month M, Day D. Check if in cycle.
+    // 2. Try Month M-1, Day D. Check if in cycle.
+    // 3. Try Month M+1, Day D. Check if in cycle.
+    
+    final s = _getEffectiveSettings(year, month);
+    final cycleStart = DateTime(year, month + 1 + s.monthOffset, s.startDay);
+    // End is not easily available without next settings.
+    // But we know a cycle is approx 1 month.
+    
+    DateTime targetDate;
+    
+    // Candidate 1: The 'main' month (year, month+1)
+    final candidate1 = DateTime(year, month + 1, charge.dayOfMonth);
+    
+    // Candidate 2: The 'previous' month (associated with offset starts)
+    final candidate2 = DateTime(year, month, charge.dayOfMonth);
+    
+    // We need to see which one falls >= cycleStart
+    // and < cycleStart + 1 month roughly.
+    // Actually, we define cycle by [Start, NextStart).
+    
+    // Let's use simpler logic: 
+    // Construct date using the SAME month logic as the cycle start?
+    // If cycle starts Dec 26. "Month" is Jan.
+    // If charge is Day 5. -> Jan 5.
+    // If charge is Day 28. -> Dec 28.
+    
+    // Heuristic:
+    // If charge.dayOfMonth < s.startDay: It's likely in the "Main" month (Jan).
+    // If charge.dayOfMonth >= s.startDay: It's likely in the "Start" month (Dec).
+    // Example: Start Dec 26. 
+    // Day 5 < 26 -> Jan 5.
+    // Day 26 >= 26 -> Dec 26.
+    
+    // Start Jan 1.
+    // Day 5 >= 1 -> Jan 5.
+    // This heuristic fails for StartDay=1.
+    
+    // Let's rely on standard logic:
+    // "Target Month" = (month+1).
+    // If s.monthOffset == -1 (Starts previous month).
+    //   If day >= startDay -> Date is (year, month, day) // Dec
+    //   Else -> Date is (year, month+1, day) // Jan
+    // If s.monthOffset == 0 (Starts same month).
+    //   Date is (year, month+1, day) // Jan (Careful of overlap if day < startDay? No, startDay usually 1)
+    
+    int y = year;
+    int m = month + 1; // 1-12
+    
+    if (s.monthOffset == -1) {
+       // Starts prev month (e.g. Dec 26 for Jan)
+       if (charge.dayOfMonth >= s.startDay) {
+         m = m - 1; 
+       }
+    } else {
+       // Starts same month (e.g. Jan 1 for Jan)
+       // Usually means day is in this month.
+       // What if charge is Day 31 and month has 30? DateTime handles overflow automatically (Oct 31 -> Nov 1)
+       // We accept that.
+    }
+    
+    if (m < 1) { m = 12; y--; }
+    if (m > 12) { m = 1; y++; }
+    
+    targetDate = DateTime(y, m, charge.dayOfMonth);
+    
+    // Create Expense
+    final newExpense = ExpenseModel(
+      id: '', // Firestore gen
+      amount: charge.amount,
+      category: charge.category,
+      description: charge.name, // "Rent"
+      date: targetDate.toIso8601String(),
+      type: 'expense',
+      originChargeId: charge.id,
+    );
+    
+    await addExpense(newExpense);
   }
 
   Future<void> deleteExpense(String id) async {

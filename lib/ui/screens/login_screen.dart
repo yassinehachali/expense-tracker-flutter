@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:google_fonts/google_fonts.dart'; 
+import '../../core/app_strings.dart';
 import '../../providers/auth_provider.dart';
-import '../widgets/glass_container.dart';
 import '../../core/theme.dart';
+import '../widgets/glass_container.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -16,13 +17,21 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _confirmPasswordController = TextEditingController(); // New
+  final _confirmPasswordController = TextEditingController();
   
+  bool _isLogin = true;
   bool _isLoading = false;
-  bool _isLogin = true; // Toggle state
   String? _error;
 
-  Future<void> _handleAuth() async { // Renamed from _handleLogin
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleAuth() async {
     setState(() {
       _isLoading = true;
       _error = null;
@@ -34,22 +43,22 @@ class _LoginScreenState extends State<LoginScreen> {
       final password = _passwordController.text;
 
       if (!_isLogin) {
-        // Sign Up Validation
         if (password != _confirmPasswordController.text) {
-          throw Exception("Passwords do not match");
+          throw Exception(AppStrings.passwordMismatch);
         }
         if (password.length < 6) {
-           throw Exception("Password must be at least 6 characters");
+           throw Exception(AppStrings.passwordLength);
         }
         await auth.signUp(email, password);
       } else {
-        // Login
         await auth.signIn(email, password);
       }
     } catch (e) {
-      setState(() {
-        _error = e.toString().replaceAll("Exception: ", ""); // Simple cleanup
-      });
+      if (mounted) {
+        setState(() {
+          _error = e.toString().replaceAll("Exception: ", ""); 
+        });
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -60,7 +69,7 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       await Provider.of<AuthProvider>(context, listen: false).signInAnonymously();
     } catch (e) {
-      setState(() => _error = "Guest login failed.");
+      if (mounted) setState(() => _error = AppStrings.guestLoginFailed);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -70,183 +79,227 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    
+
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0f172a) : const Color(0xFFf3f4f6), 
-      resizeToAvoidBottomInset: false, // Prevents keyboard from pushing/resizing layout
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: isDark 
-              ? [const Color(0xFF1e1b4b), const Color(0xFF0f172a)] 
-              : [const Color(0xFFe0e7ff), const Color(0xFFf3f4f6)],
+                ? [const Color(0xFF0F172A), const Color(0xFF1E1B4B)] 
+                : [const Color(0xFFF0F9FF), const Color(0xFFE0E7FF)], 
           ),
         ),
-        child: Center(
-          child: SingleChildScrollView(
-            padding: EdgeInsets.fromLTRB(24, 24, 24, MediaQuery.of(context).viewInsets.bottom + 24),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Logo
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(colors: [AppTheme.primary, AppTheme.primaryLight]),
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(color: AppTheme.primary.withOpacity(0.4), blurRadius: 20, offset: const Offset(0, 8))
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 400),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // Icon Logo
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [Color(0xFF8b5cf6), Color(0xFF6366f1)], // Violet to Indigo
+                        ),
+                        borderRadius: BorderRadius.circular(24), // Rounded square like screenshot
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF6366f1).withOpacity(0.5),
+                            blurRadius: 30,
+                            offset: const Offset(0, 10),
+                            spreadRadius: 2,
+                          )
+                        ]
+                      ),
+                      child: const Icon(LucideIcons.wallet, size: 48, color: Colors.white),
+                    ),
+                    const SizedBox(height: 24),
+                    
+                    // Title
+                    Text(
+                      AppStrings.appTitle,
+                      style: GoogleFonts.outfit(
+                        fontSize: 32,
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? Colors.white : const Color(0xFF1E293B),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _isLogin ? AppStrings.loginSubtitle : AppStrings.signupSubtitle,
+                      style: GoogleFonts.outfit(
+                        fontSize: 16,
+                        color: isDark ? Colors.grey[400] : Colors.grey[600],
+                      ),
+                    ),
+                    const SizedBox(height: 48),
+                    
+                    // Login/Signup Form Card
+                    GlassContainer(
+                       padding: const EdgeInsets.all(32),
+                       borderRadius: BorderRadius.circular(24),
+                       color: isDark ? const Color(0xFF1E293B).withOpacity(0.6) : Colors.white.withOpacity(0.8),
+                       child: Column(
+                         crossAxisAlignment: CrossAxisAlignment.start,
+                         children: [
+                           Text(
+                             _isLogin ? AppStrings.loginTitle : AppStrings.signupTitle, 
+                             style: GoogleFonts.outfit(
+                               fontSize: 24,
+                               fontWeight: FontWeight.bold,
+                               color: isDark ? Colors.white : Colors.black87
+                             )
+                           ),
+                           const SizedBox(height: 24),
+                           
+                           // Email
+                           TextField(
+                             controller: _emailController,
+                             style: GoogleFonts.outfit(color: isDark ? Colors.white : Colors.black87),
+                             decoration: InputDecoration(
+                               hintText: AppStrings.emailHint,
+                               hintStyle: GoogleFonts.outfit(color: Colors.grey),
+                               prefixIcon: const Icon(LucideIcons.mail, size: 20, color: AppTheme.primary),
+                               filled: true,
+                               fillColor: isDark ? Colors.black26 : Colors.grey[100],
+                               contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                               focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: AppTheme.primary, width: 2)),
+                             ),
+                           ),
+                           const SizedBox(height: 16),
+                           
+                           // Password
+                           TextField(
+                             controller: _passwordController,
+                             obscureText: true,
+                             style: GoogleFonts.outfit(color: isDark ? Colors.white : Colors.black87),
+                             decoration: InputDecoration(
+                               hintText: AppStrings.passwordHint,
+                               hintStyle: GoogleFonts.outfit(color: Colors.grey),
+                               prefixIcon: const Icon(LucideIcons.lock, size: 20, color: AppTheme.primary),
+                               filled: true,
+                               fillColor: isDark ? Colors.black26 : Colors.grey[100],
+                               contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                               focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: AppTheme.primary, width: 2)),
+                             ),
+                           ),
+
+                           // Confirm Password (Only for Sign Up)
+                           if (!_isLogin) ...[
+                             const SizedBox(height: 16),
+                             TextField(
+                               controller: _confirmPasswordController,
+                               obscureText: true,
+                               style: GoogleFonts.outfit(color: isDark ? Colors.white : Colors.black87),
+                               decoration: InputDecoration(
+                                 hintText: AppStrings.confirmPasswordHint,
+                                 hintStyle: GoogleFonts.outfit(color: Colors.grey),
+                                 prefixIcon: const Icon(LucideIcons.lock, size: 20, color: AppTheme.primary),
+                                 filled: true,
+                                 fillColor: isDark ? Colors.black26 : Colors.grey[100],
+                                 contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                                 focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: AppTheme.primary, width: 2)),
+                               ),
+                             ),
+                           ],
+                           
+                           if (_error != null)
+                             Padding(
+                               padding: const EdgeInsets.only(top: 16),
+                               child: Row(
+                                 children: [
+                                   const Icon(LucideIcons.alertCircle, color: Colors.red, size: 16),
+                                   const SizedBox(width: 8),
+                                   Expanded(child: Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 13))),
+                                 ],
+                               ),
+                             ),
+
+                           const SizedBox(height: 32),
+                           
+                           // Action Button
+                           Container(
+                             width: double.infinity,
+                             height: 56,
+                             decoration: BoxDecoration(
+                               gradient: const LinearGradient(colors: [AppTheme.primary, AppTheme.primaryLight]),
+                               borderRadius: BorderRadius.circular(16),
+                               boxShadow: [
+                                 BoxShadow(color: AppTheme.primary.withOpacity(0.4), blurRadius: 16, offset: const Offset(0, 8))
+                               ]
+                             ),
+                             child: ElevatedButton(
+                               onPressed: _isLoading ? null : _handleAuth,
+                               style: ElevatedButton.styleFrom(
+                                 backgroundColor: Colors.transparent,
+                                 shadowColor: Colors.transparent,
+                                 foregroundColor: Colors.white,
+                                 padding: EdgeInsets.zero,
+                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                               ),
+                               child: _isLoading 
+                                 ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                 : Text(
+                                     _isLogin ? AppStrings.loginBtn : AppStrings.signupBtn, 
+                                     style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 18)
+                                   ),
+                             ),
+                           ),
+                           
+                           const SizedBox(height: 20),
+                           
+                           // Toggle Login/Signup
+                           Center(
+                             child: TextButton(
+                               onPressed: () => setState(() { 
+                                 _isLogin = !_isLogin; 
+                                 _error = null;
+                               }),
+                               child: Text(
+                                 _isLogin ? AppStrings.toSignupText : AppStrings.toLoginText,
+                                 style: GoogleFonts.outfit(color: isDark ? Colors.grey[300] : Colors.grey[700])
+                               ),
+                             ),
+                           ),
+                         ],
+                       ),
+                    ),
+                    
+                    const SizedBox(height: 32),
+                    
+                    // Guest Option
+                    if (_isLogin) ...[ 
+                      Row(
+                        children: [
+                          Expanded(child: Divider(color: isDark ? Colors.white24 : Colors.grey[300])),
+                          Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Text(AppStrings.orText, style: GoogleFonts.outfit(color: Colors.grey, fontSize: 12))),
+                          Expanded(child: Divider(color: isDark ? Colors.white24 : Colors.grey[300])),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      
+                      TextButton(
+                        onPressed: _isLoading ? null : _handleGuestLogin,
+                        child: Text(
+                          AppStrings.guestLogin, 
+                          style: GoogleFonts.outfit(color: isDark ? Colors.grey[400] : Colors.grey[600])
+                        ),
+                      )
                     ]
-                  ),
-                  child: const Icon(LucideIcons.wallet, color: Colors.white, size: 48),
+                  ],
                 ),
-
-                const SizedBox(height: 32),
-                
-                // Title
-                Text(
-                  "Expense Tracker",
-                  style: GoogleFonts.outfit(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: isDark ? Colors.white : Colors.black87,
-                  ),
-                ),
-                Text(
-                  _isLogin ? "Manage your finances with ease" : "Create your account",
-                  style: theme.textTheme.bodyMedium?.copyWith(color: Colors.grey),
-                ),
-                const SizedBox(height: 48),
-                
-                // Login/Signup Form Card
-                GlassContainer(
-                   padding: const EdgeInsets.all(32),
-                   borderRadius: BorderRadius.circular(24),
-                   child: Column(
-                     crossAxisAlignment: CrossAxisAlignment.start,
-                     children: [
-                       Text(_isLogin ? "Login" : "Sign Up", style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
-                       const SizedBox(height: 24),
-                       
-                       // Email
-                       TextField(
-                         controller: _emailController,
-                         style: theme.textTheme.bodyMedium,
-                         decoration: InputDecoration(
-                           hintText: 'Email Address',
-                           prefixIcon: const Icon(LucideIcons.mail, size: 18),
-                           filled: true,
-                           fillColor: theme.cardColor.withOpacity(0.5),
-                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                           focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: theme.primaryColor)),
-                         ),
-                       ),
-                       const SizedBox(height: 16),
-                       
-                       // Password
-                       TextField(
-                         controller: _passwordController,
-                         obscureText: true,
-                         style: theme.textTheme.bodyMedium,
-                         decoration: InputDecoration(
-                           hintText: 'Password',
-                           prefixIcon: const Icon(LucideIcons.lock, size: 18),
-                           filled: true,
-                           fillColor: theme.cardColor.withOpacity(0.5),
-                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                           focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: theme.primaryColor)),
-                         ),
-                       ),
-
-                       // Confirm Password (Only for Sign Up)
-                       if (!_isLogin) ...[
-                         const SizedBox(height: 16),
-                         TextField(
-                           controller: _confirmPasswordController,
-                           obscureText: true,
-                           style: theme.textTheme.bodyMedium,
-                           decoration: InputDecoration(
-                             hintText: 'Confirm Password',
-                             prefixIcon: const Icon(LucideIcons.lock, size: 18),
-                             filled: true,
-                             fillColor: theme.cardColor.withOpacity(0.5),
-                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                             focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: theme.primaryColor)),
-                           ),
-                         ),
-                       ],
-                       
-                       if (_error != null)
-                         Padding(
-                           padding: const EdgeInsets.only(top: 12),
-                           child: Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 12)),
-                         ),
-
-                       const SizedBox(height: 32),
-                       
-                       // Action Button
-                       Container(
-                         width: double.infinity,
-                         height: 56,
-                         decoration: BoxDecoration(
-                           gradient: const LinearGradient(colors: [AppTheme.primary, AppTheme.primaryLight]),
-                           borderRadius: BorderRadius.circular(12),
-                           boxShadow: [
-                             BoxShadow(color: AppTheme.primary.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 6))
-                           ]
-                         ),
-                         child: ElevatedButton(
-                           onPressed: _isLoading ? null : _handleAuth,
-                           style: ElevatedButton.styleFrom(
-                             backgroundColor: Colors.transparent,
-                             shadowColor: Colors.transparent,
-                             foregroundColor: Colors.white,
-                             padding: EdgeInsets.zero,
-                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                           ),
-                           child: _isLoading 
-                             ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                             : Text(_isLogin ? "Sign In" : "Create Account", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                         ),
-                       ),
-                       
-                       const SizedBox(height: 16),
-                       
-                       // Toggle Login/Signup
-                       Center(
-                         child: TextButton(
-                           onPressed: () => setState(() { 
-                             _isLogin = !_isLogin; 
-                             _error = null;
-                           }),
-                           child: Text(_isLogin ? "Don't have an account? Sign Up" : "Already have an account? Login"),
-                         ),
-                       ),
-                     ],
-                   ),
-                ),
-                
-                const SizedBox(height: 24),
-                
-                // Guest Option
-                if (_isLogin) ...[ // Only show guest login in Login mode to keep UI clean
-                  Row(
-                    children: [
-                      Expanded(child: Divider(color: theme.dividerColor)),
-                      Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Text("OR", style: TextStyle(color: Colors.grey[500], fontSize: 12))),
-                      Expanded(child: Divider(color: theme.dividerColor)),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  
-                  TextButton(
-                    onPressed: _isLoading ? null : _handleGuestLogin,
-                    child: Text("Continue as Guest", style: TextStyle(color: theme.textTheme.bodyMedium?.color)),
-                  )
-                ]
-              ],
+              ),
             ),
           ),
         ),

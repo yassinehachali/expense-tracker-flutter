@@ -13,6 +13,7 @@ class ExpenseModel {
   final bool isReturned;
   final double returnedAmount;
   final String? loanee;
+  final String? originChargeId; // ID of the FixedCharge this originated from
 
   final DateTime? createdAt; // Can be null locally before sync
 
@@ -26,6 +27,7 @@ class ExpenseModel {
     this.isReturned = false,
     this.returnedAmount = 0.0,
     this.loanee,
+    this.originChargeId,
     this.createdAt,
   });
 
@@ -39,6 +41,7 @@ class ExpenseModel {
       'isReturned': isReturned,
       'returnedAmount': returnedAmount,
       if (loanee != null) 'loanee': loanee,
+      if (originChargeId != null) 'originChargeId': originChargeId,
       if (createdAt != null) 'createdAt': Timestamp.fromDate(createdAt!),
       // Note: We don't save 'id' as a field, it's the doc key
     };
@@ -65,6 +68,7 @@ class ExpenseModel {
       isReturned: data['isReturned'] ?? false,
       returnedAmount: (data['returnedAmount'] ?? 0).toDouble(),
       loanee: data['loanee'],
+      originChargeId: data['originChargeId'],
       createdAt: createdDate,
     );
   }
@@ -86,6 +90,7 @@ class ExpenseModel {
       isReturned: isReturned ?? this.isReturned,
       returnedAmount: returnedAmount ?? this.returnedAmount,
       loanee: loanee,
+      originChargeId: originChargeId,
       createdAt: createdAt,
     );
   }

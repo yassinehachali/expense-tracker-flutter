@@ -8,8 +8,11 @@ import '../../providers/expense_provider.dart';
 import '../../data/services/update_service.dart';
 import 'category_screen.dart';
 import '../../core/utils.dart';
+import '../../core/app_strings.dart'; // Add import
 
 import '../../core/global_events.dart';
+import 'loans_manager_screen.dart';
+import 'fixed_charges_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -41,7 +44,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final theme = Theme.of(context);
 
       return Scaffold(
-        appBar: AppBar(title: const Text('Settings'), centerTitle: false),
+        appBar: AppBar(title: const Text(AppStrings.settingsTitle), centerTitle: false),
         body: ListView(
           children: [
             // Profile Section
@@ -53,7 +56,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   : 'G', 
                   style: const TextStyle(color: Colors.white)),
               ),
-              title: Text(auth.user?.email ?? 'Guest User'),
+              title: Text(auth.user?.email ?? AppStrings.guestUser),
               subtitle: Text(auth.user?.uid ?? ''),
             ),
             const Divider(),
@@ -61,7 +64,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             // Salary Configuration
             ListTile(
               leading: const Icon(LucideIcons.briefcase),
-              title: const Text('Salary & Cycle'),
+              title: const Text(AppStrings.salaryCycleOption),
               subtitle: Text("${Utils.formatCurrency(expenseProvider.currentCycleSalary)} (${Utils.formatDate(expenseProvider.currentCycleStart)} - ${Utils.formatDate(expenseProvider.currentCycleEnd)})"),
               trailing: const Icon(Icons.chevron_right),
               onTap: () {
@@ -71,18 +74,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
             
             ListTile(
               leading: const Icon(LucideIcons.list),
-              title: const Text('Categories'),
-              subtitle: const Text('Manage your categories'),
+              title: const Text(AppStrings.categoriesOption),
+              subtitle: const Text(AppStrings.categoriesSubtitle),
               trailing: const Icon(Icons.chevron_right),
               onTap: () {
                 Navigator.push(context, MaterialPageRoute(builder: (_) => const CategoryScreen()));
               },
             ),
             
+            ListTile(
+              leading: const Icon(LucideIcons.calendarClock),
+              title: const Text("Fixed Charges"),
+              subtitle: const Text("Manage recurring expenses"),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const FixedChargesScreen()));
+              },
+            ),
+            
+            ListTile(
+              leading: const Icon(LucideIcons.coins),
+              title: const Text(AppStrings.loansManager),
+              subtitle: const Text("Manage borrowed debts"),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const LoansManagerScreen()));
+              },
+            ),
+            
             if (auth.user?.email != null) // Only show for logged in users
                ListTile(
                 leading: const Icon(LucideIcons.lock),
-                title: const Text('Change Password'),
+                title: const Text(AppStrings.changePasswordOption),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () {
                   _showChangePasswordDialog(context, auth);
@@ -92,22 +115,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
             if (!kIsWeb) // Auto-update is only for Android APKs
               ListTile(
                 leading: const Icon(LucideIcons.downloadCloud),
-                title: const Text('Check for Updates'),
+                title: const Text(AppStrings.checkUpdatesOption),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () {
                   _checkForUpdates(context);
                 },
               ),
 
-
-
-
             const Divider(),
 
             // Danger Zone
             ListTile(
               leading: const Icon(LucideIcons.trash2, color: Colors.red),
-              title: const Text('Reset All Data', style: TextStyle(color: Colors.red)),
+              title: const Text(AppStrings.resetDataOption, style: TextStyle(color: Colors.red)),
               onTap: () {
                  _showResetDialog(context, expenseProvider);
               },
@@ -115,7 +135,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             
              ListTile(
               leading: const Icon(LucideIcons.logOut),
-              title: const Text('Log Out'),
+              title: const Text(AppStrings.logoutOption),
               onTap: () async {
                 await auth.signOut();
               },
@@ -148,7 +168,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         body: Center(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
-            child: Text("Error loading Settings:\n$e\n\n$stack", style: const TextStyle(color: Colors.red)),
+            child: Text("${AppStrings.errorPrefix}\n$e\n\n$stack", style: const TextStyle(color: Colors.red)),
           ),
         ),
       );
@@ -165,10 +185,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final initialSalary = provider.currentCycleSalary;
     final initialStart = provider.currentCycleStart; // This is the calculated start date
     // We need to reverse engineer the 'day' and 'offset' from the effective settings logic
-    // But better to just expose the raw settings if possible.
-    // Since we don't expose the raw settings object, we'll infer:
-    // If start date is in previous month -> Offset -1
-    // If start date is in current month -> Offset 0
     
     int initialDay = initialStart.day;
     int initialOffset = (initialStart.month == (selectedMonth + 1)) ? 0 : -1;
@@ -184,10 +200,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (ctx) => StatefulBuilder(
         builder: (context, setState) {
           // Dynamic Label for "Start Month"
-          // If offset 0: "November"
-          // If offset -1: "October"
           final startMonthIndex = (selectedMonth + selectedOffset) % 12;
-          // Handle negative modulo in Dart? (0-1 = -1)
           final normalizedIndex = startMonthIndex < 0 ? 12 + startMonthIndex : startMonthIndex;
           
           final startMonthName = Utils.getMonthName(normalizedIndex);
@@ -200,7 +213,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                    const Text(
-                    "Customize the salary and start date for this specific month.",
+                    AppStrings.customizeCycle,
                     style: TextStyle(fontSize: 12, color: Colors.grey),
                   ),
                   const SizedBox(height: 16),
@@ -208,12 +221,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     controller: controller,
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
-                      labelText: "Salary Amount", 
+                      labelText: AppStrings.salaryAmount, 
                       prefixText: "DH "
                     ),
                   ),
                   const SizedBox(height: 16),
-                  const Text("Cycle Starts In:"),
+                  const Text(AppStrings.cycleStartsIn),
                   Row(
                     children: [
                       // Month Selector (Prev vs Current)
@@ -234,7 +247,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         items: List.generate(28, (index) => index + 1).map((day) {
                           return DropdownMenuItem(
                             value: day,
-                            child: Text("Day $day"),
+                            child: Text("${AppStrings.cycleStartDay}$day"),
                           );
                         }).toList(),
                         onChanged: (val) {
@@ -247,14 +260,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   
                   // Helper Text
                   Text(
-                    "This cycle will start on $startMonthName $selectedDay.",
+                    "${AppStrings.cycleHelperText}$startMonthName $selectedDay.",
                      style: const TextStyle(fontSize: 12, color: Colors.indigo),
                   ),
                 ],
               ),
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text(AppStrings.cancel)),
               TextButton(
                 onPressed: () async {
                   final val = double.tryParse(controller.text) ?? 0;
@@ -270,7 +283,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   
                   if (ctx.mounted) Navigator.pop(ctx);
                 }, 
-                child: const Text("Save")
+                child: const Text(AppStrings.save)
               ),
             ],
           );
@@ -287,7 +300,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text("Change Password"),
+        title: const Text(AppStrings.changePasswordOption),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -295,25 +308,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
               TextField(
                 controller: currentPassController,
                 obscureText: true,
-                decoration: const InputDecoration(labelText: "Current Password"),
+                decoration: const InputDecoration(labelText: AppStrings.currentPassword),
               ),
               const SizedBox(height: 16),
               TextField(
                 controller: newPassController,
                 obscureText: true,
-                decoration: const InputDecoration(labelText: "New Password"),
+                decoration: const InputDecoration(labelText: AppStrings.newPassword),
               ),
               const SizedBox(height: 16),
               TextField(
                 controller: confirmPassController,
                 obscureText: true,
-                decoration: const InputDecoration(labelText: "Confirm New Password"),
+                decoration: const InputDecoration(labelText: AppStrings.confirmNewPassword),
               ),
             ],
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text(AppStrings.cancel)),
           TextButton(
             onPressed: () async {
               final current = currentPassController.text;
@@ -321,11 +334,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               final confirm = confirmPassController.text;
 
               if (newPass != confirm) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("New passwords do not match")));
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text(AppStrings.newPasswordMismatch)));
                 return;
               }
               if (newPass.length < 6) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Password must be at least 6 characters")));
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text(AppStrings.passwordLength)));
                 return;
               }
 
@@ -335,11 +348,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 await auth.changePassword(current, newPass);
                 if (ctx.mounted) {
                   Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Password updated successfully")));
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text(AppStrings.passwordUpdateSuccess)));
                 }
               } catch (e) {
                 if (ctx.mounted) {
-                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("${AppStrings.errorPrefix}$e")));
                 }
               }
             }, 
@@ -354,17 +367,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text("Reset Data"),
-        content: const Text("Are you sure you want to delete ALL expenses and reset your salary? This cannot be undone."),
+        title: const Text(AppStrings.resetDataTitle),
+        content: const Text(AppStrings.resetDataConfirm),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text(AppStrings.cancel)),
           TextButton(
             onPressed: () async {
               await provider.resetData();
               if (ctx.mounted) Navigator.pop(ctx);
             }, 
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text("Delete All")
+            child: const Text(AppStrings.deleteAll)
           ),
         ],
       ),
@@ -385,7 +398,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
       if (updateData != null) {
         if (updateData['error'] != null) {
-           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: ${updateData['error']}")));
+           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("${AppStrings.errorPrefix}${updateData['error']}")));
            return;
         }
 
@@ -394,7 +407,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           showDialog(
             context: context,
             builder: (ctx) => AlertDialog(
-              title: const Text("Update Available 🚀"),
+              title: const Text(AppStrings.updateAvailableTitle),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -402,20 +415,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: [
                     Text("Version: ${updateData['version']}", style: const TextStyle(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
-                    const Text("Changelog:"),
+                    const Text(AppStrings.changelog),
                     const SizedBox(height: 4),
                     Text(updateData['changelog']),
                   ],
                 ),
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Later")),
+                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text(AppStrings.later)),
                 TextButton(
                   onPressed: () {
                     Navigator.pop(ctx);
                     _startUpdate(context, updateData['url']);
                   },
-                  child: const Text("Update Now"),
+                  child: const Text(AppStrings.updateNow),
                 ),
               ],
             ),
@@ -423,16 +436,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
         } else {
           // Debugging info in user feedback
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("Up to date! (Local: ${updateData['localVersion']} vs Remote: ${updateData['version']})"))
+            SnackBar(content: Text("${AppStrings.upToDate} (Local: ${updateData['localVersion']} vs Remote: ${updateData['version']})"))
           );
         }
       } else {
-         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Check failed (No response)")));
+         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("${AppStrings.checkFailed} (No response)")));
       }
     } catch (e) {
       if (context.mounted) {
         Navigator.pop(context); // ensure loading is closed
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error checking for updates: $e")));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("${AppStrings.errorPrefix}$e")));
       }
     }
   }
@@ -443,23 +456,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
       barrierDismissible: false,
       builder: (ctx) {
         double progress = 0;
-        String status = "Starting download...";
+        String status = AppStrings.startDownload;
         
         return StatefulBuilder(
           builder: (context, setState) {
             // Start download once
-            if (progress == 0 && status == "Starting download...") {
+            if (progress == 0 && status == AppStrings.startDownload) {
                UpdateService().downloadUpdate(url, (val) {
                  if (context.mounted) {
                    setState(() {
                      progress = val;
-                     status = "Downloading: ${(val * 100).toStringAsFixed(0)}%";
+                     status = "${AppStrings.downloading}${(val * 100).toStringAsFixed(0)}%";
                    });
                  }
                }).then((path) async {
                  if (context.mounted) {
                    setState(() {
-                     status = "Launching Installer...";
+                     status = AppStrings.launchingInstaller;
                      progress = 1.0;
                    });
                    
@@ -471,13 +484,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       if (context.mounted) {
                         Navigator.pop(context); // Close dialog
                         if (error != null) {
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Install failed: $error")));
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("${AppStrings.installFailed}$error")));
                         }
                       }
                    } else {
                      if (context.mounted) {
                         Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Download failed")));
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text(AppStrings.downloadFailed)));
                      }
                    }
                  }
@@ -485,7 +498,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             }
 
             return AlertDialog(
-              title: const Text("Updating..."),
+              title: const Text("Updating..."), // Could assume this is part of transient UI or add to strings if critical
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [

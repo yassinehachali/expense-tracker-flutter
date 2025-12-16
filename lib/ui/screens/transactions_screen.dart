@@ -8,6 +8,8 @@ import 'add_expense_screen.dart';
 import '../../data/models/expense_model.dart';
 import '../../core/utils.dart'; // Ensure utils has formatCurrency
 
+import '../../core/app_strings.dart';
+
 class TransactionsScreen extends StatelessWidget {
   const TransactionsScreen({super.key});
 
@@ -55,7 +57,7 @@ class TransactionsScreen extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 _FilterChip(
-                  label: 'Loans', 
+                  label: AppStrings.filterLoans, 
                   selected: provider.filterType == 'loan',
                   onTap: () => provider.setFilterType('loan'),
                 ),
