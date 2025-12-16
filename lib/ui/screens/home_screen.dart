@@ -39,10 +39,14 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     // Request Notification Permissions if needed (Android 13+)
-    Future.delayed(const Duration(seconds: 2), () {
+    Future.delayed(const Duration(seconds: 2), () async {
        if (mounted) {
          try {
-           NotificationService().requestPermissions();
+           final granted = await NotificationService().requestPermissions();
+           if (granted == true && mounted) {
+             // Re-schedule to ensure exact alarm intent is allowed and timezones are correct
+             await NotificationService().scheduleDailyNotification(21, 0); 
+           }
          } catch (e) {
            print("Permission request error: $e");
          }

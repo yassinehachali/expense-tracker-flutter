@@ -4,6 +4,7 @@ import '../data/models/expense_model.dart';
 import '../data/models/category_model.dart';
 import '../data/models/user_settings_model.dart';
 import '../data/models/fixed_charge_model.dart';
+import '../data/models/insurance_claim_model.dart';
 import '../data/services/firestore_service.dart';
 import '../core/constants.dart';
 import '../core/utils.dart';
@@ -15,6 +16,7 @@ class ExpenseProvider with ChangeNotifier {
   List<ExpenseModel> _expenses = [];
   List<CategoryModel> _categories = [];
   List<FixedChargeModel> _fixedCharges = [];
+  List<InsuranceClaimModel> _insuranceClaims = [];
   
   // Settings State
   UserSettingsModel _settings = UserSettingsModel();
@@ -29,6 +31,9 @@ class ExpenseProvider with ChangeNotifier {
   StreamSubscription? _settingsSub;
   StreamSubscription? _categoriesSub;
   StreamSubscription? _fixedChargesSub;
+  StreamSubscription? _insuranceClaimsSub;
+
+  List<InsuranceClaimModel> get insuranceClaims => _insuranceClaims;
 
   bool _isLoading = false;
   bool get isLoading => _isLoading;
@@ -143,6 +148,11 @@ class ExpenseProvider with ChangeNotifier {
       notifyListeners();
       _checkAndApplyAutoCharges(); // Check whenever definitions change
     }, onError: (e) => print("Error loading fixed charges: $e"));
+
+    _insuranceClaimsSub = _firestoreService.getInsuranceClaimsStream(uid).listen((data) {
+      _insuranceClaims = data;
+      notifyListeners();
+    }, onError: (e) => print("Error loading insurance claims: $e"));
   }
   
   void _cancelSubscriptions() {
@@ -150,6 +160,7 @@ class ExpenseProvider with ChangeNotifier {
     _settingsSub?.cancel();
     _categoriesSub?.cancel();
     _fixedChargesSub?.cancel();
+    _insuranceClaimsSub?.cancel();
   }
 
   @override
@@ -756,6 +767,88 @@ class ExpenseProvider with ChangeNotifier {
   Future<void> resetData() async {
     if (userId == null) return;
     await _firestoreService.resetData(userId!);
+  }
+
+  // --- Insurance Logic ---
+
+  Future<void> addInsuranceClaim({
+    required String title,
+    required double amount,
+    required String date,
+  }) async {
+    if (userId == null) return;
+
+    // 1. Create the Expense (User pays upfront)
+    final newExpense = ExpenseModel(
+      id: '',
+      amount: amount,
+      category: 'Health',
+      description: "$title (Insurance Pending)",
+      date: date,
+      type: 'expense',
+    );
+    
+    // Get Ref ID.
+    final expRef = await _firestoreService.addExpense(userId!, newExpense);
+    
+    // 2. Create the Claim
+    final claim = InsuranceClaimModel(
+      id: '',
+      userId: userId!,
+      title: title,
+      totalAmount: amount,
+      date: date,
+      status: 'pending',
+      relatedExpenseId: expRef,
+      refundAmount: 0,
+    );
+    
+    await _firestoreService.addInsuranceClaim(userId!, claim);
+  }
+
+  Future<void> settleInsuranceClaim(InsuranceClaimModel claim, double refundAmount, {String? date}) async {
+    if (userId == null) return;
+
+    // 1. Create Refund Income
+    final incomeTx = ExpenseModel(
+      id: '',
+      amount: refundAmount,
+      category: 'Insurance Refund', 
+      description: "Refund for ${claim.title}",
+      date: date ?? DateTime.now().toIso8601String(),
+      type: 'income',
+    );
+    await addExpense(incomeTx);
+
+    // 2. Update Claim Status
+    await _firestoreService.updateInsuranceClaim(userId!, claim.id, {
+      'status': 'paid',
+      'refundAmount': refundAmount,
+    });
+
+    // 3. Update Original Expense Description (if linked)
+    if (claim.relatedExpenseId != null && claim.relatedExpenseId!.isNotEmpty) {
+       // Ideally we should fetch it first to preserve other fields, but we don't have a direct 'getExpense' in service easily exposed here 
+       // or we'd have to find it in _expenses list.
+       try {
+         final original = _expenses.firstWhere((e) => e.id == claim.relatedExpenseId);
+         // Replace "(Insurance Pending)" with "(Insurance Repaid)" or append if missing
+         String baseDesc = original.description.replaceAll("(Insurance Pending)", "").trim();
+         final newDesc = "$baseDesc (Insurance Repaid)";
+         
+         final updatedMap = original.toMap();
+         updatedMap['description'] = newDesc; // Update description
+         
+         await _firestoreService.updateExpense(userId!, original.id, updatedMap);
+       } catch (e) {
+         print("Could not find or update related expense: $e");
+       }
+    }
+  }
+  
+  Future<void> deleteInsuranceClaim(String claimId) async {
+    if (userId == null) return;
+    await _firestoreService.deleteInsuranceClaim(userId!, claimId);
   }
 }
 

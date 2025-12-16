@@ -1,6 +1,7 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
+import 'package:flutter_timezone/flutter_timezone.dart';
 import '../../core/app_strings.dart'; 
 
 class NotificationService {
@@ -21,6 +22,14 @@ class NotificationService {
 
     // Initialize Time Zones
     tz.initializeTimeZones();
+    try {
+      final String timeZoneName = await FlutterTimezone.getLocalTimezone();
+      tz.setLocalLocation(tz.getLocation(timeZoneName));
+    } catch (e) {
+      print("Could not get local timezone: $e");
+      // Fallback to UTC or system default which might be initialized
+      // tz.setLocalLocation(tz.getLocation('UTC')); // Optional fallback
+    }
 
     // Android Setup
     const AndroidInitializationSettings initializationSettingsAndroid =
@@ -62,19 +71,19 @@ class NotificationService {
     if (androidImplementation != null) {
       await androidImplementation.createNotificationChannel(channel);
       await androidImplementation.createNotificationChannel(reminderChannel);
-      // await androidImplementation.requestNotificationsPermission(); // Moved to explicit call
     }
 
     _isInitialized = true;
   }
 
-  Future<void> requestPermissions() async {
+  Future<bool?> requestPermissions() async {
     final androidImplementation = flutterLocalNotificationsPlugin
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
     
     if (androidImplementation != null) {
-      await androidImplementation.requestNotificationsPermission();
+      return await androidImplementation.requestNotificationsPermission();
     }
+    return null;
   }
 
 

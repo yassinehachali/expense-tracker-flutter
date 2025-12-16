@@ -1,10 +1,10 @@
-// File: lib/data/services/firestore_service.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/expense_model.dart';
 import '../models/category_model.dart';
 import '../models/category_model.dart';
 import '../models/user_settings_model.dart';
 import '../models/fixed_charge_model.dart';
+import '../models/insurance_claim_model.dart';
 
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -81,11 +81,12 @@ class FirestoreService {
 
   // --- Actions ---
 
-  Future<void> addExpense(String uid, ExpenseModel expense) async {
-    await _getExpensesRef(uid).add({
+  Future<String> addExpense(String uid, ExpenseModel expense) async {
+    final docRef = await _getExpensesRef(uid).add({
       ...expense.toMap(),
       'createdAt': FieldValue.serverTimestamp(),
     });
+    return docRef.id;
   }
 
   Future<void> updateExpense(String uid, String expenseId, Map<String, dynamic> data) async {
@@ -165,5 +166,37 @@ class FirestoreService {
 
   Future<void> deleteFixedCharge(String uid, String chargeId) async {
     await _getFixedChargesRef(uid).doc(chargeId).delete();
+  }
+  // --- Insurance Claims ---
+
+  CollectionReference _getInsuranceClaimsRef(String uid) {
+    return _db
+        .collection('artifacts')
+        .doc(appId)
+        .collection('users')
+        .doc(uid)
+        .collection('insurance_claims');
+  }
+
+  Stream<List<InsuranceClaimModel>> getInsuranceClaimsStream(String uid) {
+    return _getInsuranceClaimsRef(uid).snapshots().map((snapshot) {
+      return snapshot.docs.map((doc) => InsuranceClaimModel.fromMap(doc.id, doc.data() as Map<String, dynamic>)).toList();
+    });
+  }
+
+  Future<String> addInsuranceClaim(String uid, InsuranceClaimModel claim) async {
+    final docRef = await _getInsuranceClaimsRef(uid).add({
+      ...claim.toMap(),
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    return docRef.id;
+  }
+
+  Future<void> updateInsuranceClaim(String uid, String claimId, Map<String, dynamic> data) async {
+    await _getInsuranceClaimsRef(uid).doc(claimId).update(data);
+  }
+
+  Future<void> deleteInsuranceClaim(String uid, String claimId) async {
+    await _getInsuranceClaimsRef(uid).doc(claimId).delete();
   }
 }

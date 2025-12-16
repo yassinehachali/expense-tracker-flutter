@@ -13,6 +13,7 @@ import '../../core/app_strings.dart'; // Add import
 import '../../core/global_events.dart';
 import 'loans_manager_screen.dart';
 import 'fixed_charges_screen.dart';
+import 'insurance_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -89,6 +90,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
               trailing: const Icon(Icons.chevron_right),
               onTap: () {
                 Navigator.push(context, MaterialPageRoute(builder: (_) => const FixedChargesScreen()));
+              },
+            ),
+            
+            ListTile(
+              leading: const Icon(LucideIcons.heartPulse),
+              title: const Text("Health Insurance"),
+              subtitle: const Text("Track claims and refunds"),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const InsuranceScreen()));
               },
             ),
             
