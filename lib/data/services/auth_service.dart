@@ -31,6 +31,10 @@ class AuthService {
     await _auth.signInAnonymously();
   }
 
+  Future<void> signInWithCredential(AuthCredential credential) async {
+    await _auth.signInWithCredential(credential);
+  }
+
   Future<void> signOut() async {
     await _auth.signOut();
   }

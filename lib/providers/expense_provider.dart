@@ -8,6 +8,7 @@ import '../data/models/insurance_claim_model.dart';
 import '../data/services/firestore_service.dart';
 import '../core/constants.dart';
 import '../core/utils.dart';
+import '../core/app_strings.dart';
 
 class ExpenseProvider with ChangeNotifier {
   final FirestoreService _firestoreService = FirestoreService();
@@ -20,6 +21,7 @@ class ExpenseProvider with ChangeNotifier {
   
   // Settings State
   UserSettingsModel _settings = UserSettingsModel();
+  UserSettingsModel get settings => _settings;
   
   // UI State
   int _selectedMonth = DateTime.now().month - 1; // 0-indexed (Jan=0, Dec=11)
@@ -134,6 +136,8 @@ class ExpenseProvider with ChangeNotifier {
 
     _settingsSub = _firestoreService.getSettingsStream(uid).listen((data) {
       _settings = data;
+      // Update App Language
+      AppStrings.setLanguage(_settings.language);
       // Force refresh of any derived data
       notifyListeners();
     }, onError: (e) => print("Error loading settings: $e"));
@@ -370,6 +374,24 @@ class ExpenseProvider with ChangeNotifier {
   Future<void> updateExpense(ExpenseModel expense) async {
     if (userId == null) return;
     await _firestoreService.updateExpense(userId!, expense.id, expense.toMap());
+
+    // Check if this expense is linked to an Insurance Claim and update it
+    try {
+      final linkedClaim = _insuranceClaims.firstWhere(
+        (c) => c.relatedExpenseId == expense.id, 
+        orElse: () => InsuranceClaimModel(id: '', userId: '', title: '', totalAmount: 0, date: '', status: '')
+      );
+
+      if (linkedClaim.id.isNotEmpty && linkedClaim.status == 'pending') {
+         // Update the claim amount to match the new expense amount
+         await _firestoreService.updateInsuranceClaim(userId!, linkedClaim.id, {
+           'totalAmount': expense.amount,
+         });
+         // We could also sync the title/date if we wanted, but amount is critical.
+      }
+    } catch (e) {
+      print("Error syncing insurance claim: $e");
+    }
   }
 
   Future<void> updateRepayment(ExpenseModel loan, double amountToAdd) async {
@@ -526,16 +548,74 @@ class ExpenseProvider with ChangeNotifier {
       // 3. Check if we already have an expense from this origin in this cycle
       final alreadyExists = _expenses.any((exp) {
         if (exp.originChargeId != charge.id) return false;
-        // Double check date is within cycle range
+        // Double check date is within cycle range.
+        // If we found one, we assume it's for this cycle.
+        // We could be stricter but originChargeId check + current view context is usually enough for the "Auto Apply" logic
         final d = DateTime.parse(exp.date);
         return isInCurrentCycle(d);
       });
 
       if (!alreadyExists) {
+        // CHECK DELAY LOGIC
+        if (charge.delayedAutoPay) {
+           final targetDate = _calculateChargeDate(_selectedYear, _selectedMonth, charge.dayOfMonth);
+           final now = DateTime.now();
+           // Compare just date parts to be precise, or just isBefore.
+           // If today is 2nd, target is 3rd. isBefore -> true. Skip.
+           // If today is 3rd. isBefore -> false (if time matches? usually now is later than midnight).
+           // Let's strip time for safety.
+           final today = DateTime(now.year, now.month, now.day);
+           
+           if (today.isBefore(targetDate)) {
+             // Too early to pay
+             continue;
+           }
+        }
+
         print("Applying Auto Charge: ${charge.name} for $_selectedMonth/$_selectedYear");
         await _applyChargeToCycle(charge, _selectedYear, _selectedMonth);
       }
     }
+  }
+
+  DateTime _calculateChargeDate(int year, int month, int dayOfMonth) {
+    // Determine the likely date for this charge in the requested cycle (year, month).
+    // Our cycles can be offset. 
+    // Cycle for "January" (month=0) might start Dec 26.
+    // If charge day is 5 -> Jan 5.
+    // If charge day is 28 -> Dec 28.
+    
+    final s = _getEffectiveSettings(year, month);
+    // Logic: 
+    // If startOffset == -1 (Starts previous month)
+    //   if day >= startDay -> Date is in Previous Month
+    //   else -> Date is in Current Month
+    // If startOffset == 0 (Starts same month)
+    //   Date is in Current Month
+    
+    // Note: 'month' param is 0-indexed (0=Jan).
+    // DateTime accepts month 1-12 usually or handles overflow 13 -> Jan Next Year.
+    // Lets use 1-based month for variable m to be clear.
+    
+    int targetYear = year;
+    int targetMonth = month + 1; // 1 = Jan
+    
+    if (s.monthOffset == -1) {
+      if (dayOfMonth >= s.startDay) {
+        // Belongs to previous month part of the cycle
+        targetMonth = targetMonth - 1;
+      }
+    }
+    // Handle year rollover if targetMonth became 0 (Dec prev year) or we incremented (not here but possible)
+    if (targetMonth < 1) {
+      targetMonth = 12;
+      targetYear--;
+    } else if (targetMonth > 12) {
+      targetMonth = 1;
+      targetYear++;
+    }
+    
+    return DateTime(targetYear, targetMonth, dayOfMonth);
   }
 
   // Helper to check status for UI
@@ -769,6 +849,14 @@ class ExpenseProvider with ChangeNotifier {
     await _firestoreService.resetData(userId!);
   }
 
+  Future<void> setLanguage(String lang) async {
+    if (userId == null) return;
+    await _firestoreService.updateSettings(userId!, {'language': lang});
+    // AppStrings will update via stream, but we can optimistically set it too
+    AppStrings.setLanguage(lang);
+    notifyListeners();
+  }
+
   // --- Insurance Logic ---
 
   Future<void> addInsuranceClaim({
@@ -804,6 +892,46 @@ class ExpenseProvider with ChangeNotifier {
     );
     
     await _firestoreService.addInsuranceClaim(userId!, claim);
+  }
+
+  Future<void> editInsuranceClaim(InsuranceClaimModel claim, String newTitle, double newAmount, String newDate) async {
+    if (userId == null) return;
+
+    // 1. Update the Claim
+    await _firestoreService.updateInsuranceClaim(userId!, claim.id, {
+      'title': newTitle,
+      'totalAmount': newAmount,
+      'date': newDate,
+    });
+
+    // 2. Update the Linked Expense
+    if (claim.relatedExpenseId != null && claim.relatedExpenseId!.isNotEmpty) {
+       try {
+         final original = _expenses.firstWhere((e) => e.id == claim.relatedExpenseId);
+         
+         // Preserve description suffix if exists
+         String currentDesc = original.description;
+         String suffix = "";
+         if (currentDesc.contains("(Insurance Pending)")) suffix = " (Insurance Pending)";
+         else if (currentDesc.contains("(Insurance Repaid)")) suffix = " (Insurance Repaid)";
+         
+         final updatedExpense = original.copyWith(
+            description: "$newTitle$suffix",
+            amount: newAmount,
+            // Date logic: usually expense date matches claim date
+            // We can update it or keep original. Let's update it to stay perfectly synced.
+         );
+         
+         // We construct the map manually to include date update if copyWith doesn't handle it fully or we want explicit control
+         final updateMap = updatedExpense.toMap();
+         updateMap['date'] = newDate;
+
+         await _firestoreService.updateExpense(userId!, original.id, updateMap);
+
+       } catch (e) {
+         print("Could not find or update related expense during claim edit: $e");
+       }
+    }
   }
 
   Future<void> settleInsuranceClaim(InsuranceClaimModel claim, double refundAmount, {String? date}) async {

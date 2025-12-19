@@ -32,7 +32,7 @@ class TransactionsScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('History'),
+        title: Text(AppStrings.historyTitle),
         centerTitle: true,
         backgroundColor: Colors.transparent,
       ),
@@ -45,13 +45,13 @@ class TransactionsScreen extends StatelessWidget {
             child: Row(
               children: [
                 _FilterChip(
-                  label: 'All', 
+                  label: AppStrings.filterAll, 
                   selected: provider.filterType == 'all',
                   onTap: () => provider.setFilterType('all'),
                 ),
                 const SizedBox(width: 8),
                 _FilterChip(
-                  label: 'Expenses', 
+                  label: AppStrings.filterExpenses, 
                   selected: provider.filterType == 'expense',
                   onTap: () => provider.setFilterType('expense'),
                 ),
@@ -63,7 +63,7 @@ class TransactionsScreen extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 _FilterChip(
-                  label: 'Income', 
+                  label: AppStrings.filterIncome, 
                   selected: provider.filterType == 'income',
                   onTap: () => provider.setFilterType('income'),
                 ),
@@ -76,7 +76,7 @@ class TransactionsScreen extends StatelessWidget {
             child: provider.isLoading 
               ? const Center(child: CircularProgressIndicator())
               : groupedExpenses.isEmpty
-                ? Center(child: Text("No transactions found", style: theme.textTheme.bodyLarge))
+                ? Center(child: Text(AppStrings.noTransactions, style: theme.textTheme.bodyLarge))
                 : ListView.builder(
                     padding: const EdgeInsets.all(16),
                     itemCount: sortedKeys.length,
@@ -89,10 +89,10 @@ class TransactionsScreen extends StatelessWidget {
                       String dateLabel;
                       if (inCycle) {
                          // e.g. Friday 12
-                         dateLabel = '${DateFormat('EEEE').format(date)} ${DateFormat('d').format(date)}';
+                         dateLabel = '${DateFormat('EEEE', AppStrings.language).format(date)} ${DateFormat('d', AppStrings.language).format(date)}';
                       } else {
                          // e.g. Dec 28
-                         dateLabel = DateFormat('MMM d').format(date);
+                         dateLabel = DateFormat('MMM d', AppStrings.language).format(date);
                       }
 
                       // Calculate Daily Total
@@ -167,7 +167,7 @@ class TransactionsScreen extends StatelessWidget {
                                                 expense.isReturned ? Icons.undo : Icons.check_circle_outline, 
                                                 color: expense.isReturned ? Colors.orange : Colors.green
                                               ),
-                                              title: Text(expense.isReturned ? "Mark as Pending" : "Mark as Returned"),
+                                              title: Text(expense.isReturned ? AppStrings.markAsPending : AppStrings.markAsReturned),
                                               onTap: () async {
                                                 Navigator.pop(ctx);
                                                 await provider.setLoanReturned(expense, !expense.isReturned);
@@ -176,7 +176,7 @@ class TransactionsScreen extends StatelessWidget {
                                           if (expense.type != 'rollover') // Rollover is not editable
                                             ListTile(
                                               leading: const Icon(Icons.edit),
-                                              title: const Text("Edit Transaction"),
+                                              title: Text(AppStrings.editTransaction),
                                               onTap: () {
                                                 Navigator.pop(ctx);
                                                 Navigator.push(context, MaterialPageRoute(builder: (_) => AddExpenseScreen(expenseToEdit: expense)));
@@ -184,7 +184,7 @@ class TransactionsScreen extends StatelessWidget {
                                             ),
                                           ListTile(
                                             leading: const Icon(Icons.delete, color: Colors.red),
-                                            title: const Text("Delete Transaction", style: TextStyle(color: Colors.red)),
+                                            title: Text(AppStrings.deleteTransaction, style: const TextStyle(color: Colors.red)),
                                             onTap: () async {
                                               Navigator.pop(ctx);
                                               if (expense.type == 'rollover') {

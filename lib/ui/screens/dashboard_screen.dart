@@ -1,11 +1,13 @@
 // File: lib/ui/screens/dashboard_screen.dart
 import 'package:flutter/material.dart';
-import '../../core/app_strings.dart'; // Add import
+import '../../core/app_strings.dart'; 
+import 'package:intl/intl.dart'; // Add intl import
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'transactions_screen.dart'; // Not needed if we use callback
 import 'add_expense_screen.dart'; // Needed for Edit
+import 'insurance_screen.dart'; // Redirect for insurance claims
 import '../../providers/expense_provider.dart';
 import '../../core/constants.dart';
 import '../../core/utils.dart';
@@ -63,12 +65,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Expense Tracker',
+                          AppStrings.appTitle,
                           style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
                           overflow: TextOverflow.ellipsis,
                         ),
                         Text(
-                          'Welcome back',
+                          AppStrings.welcomeBack,
                           style: theme.textTheme.bodySmall,
                         ),
                       ],
@@ -89,10 +91,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       underline: Container(),
                       icon: const Icon(Icons.keyboard_arrow_down, size: 16),
                       style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
-                      items: List.generate(MONTHS.length, (index) {
+                      items: List.generate(12, (index) { // Use 12 instead of MONTHS.length
+                        final date = DateTime(2025, index + 1); // Year doesn't matter for month name
                         return DropdownMenuItem(
                           value: index,
-                          child: Text(MONTHS[index]),
+                          child: Text(DateFormat.MMMM(AppStrings.language).format(date)), // Full name localized
                         );
                       }),
                       onChanged: (val) {
@@ -144,7 +147,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           const SizedBox(width: 8),
                           Flexible(
                             child: Text(
-                              'Expense Tracker',
+                              AppStrings.appTitle,
                               style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold), // Smaller Text
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -167,10 +170,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             icon: const Icon(Icons.keyboard_arrow_down, size: 14),
                             isDense: true, // Reduces height
                             style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.bold),
-                            items: List.generate(MONTHS.length, (index) {
+                            items: List.generate(12, (index) {
+                               final date = DateTime(2025, index + 1);
                               return DropdownMenuItem(
                                 value: index,
-                                child: Text(MONTHS[index].substring(0, 3)), // Short month name (Jan, Feb)
+                                child: Text(DateFormat.MMM(AppStrings.language).format(date)), // Short month localized
                               );
                             }),
                             onChanged: (val) {
@@ -234,7 +238,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Total Remaining', style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 14)),
+                    Text(AppStrings.totalRemaining, style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 14)),
                     const Icon(LucideIcons.wallet, color: Colors.white, size: 20),
                   ],
                 ),
@@ -252,14 +256,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 Row(
                   children: [
                      _MiniStat(
-                       label: 'Income',
+                       label: AppStrings.income,
                        amount: stats['totalIncome'] ?? 0,
                        icon: LucideIcons.arrowUpCircle,
                        color: Colors.greenAccent,
                      ),
                      Container(height: 40, width: 1, color: Colors.white.withOpacity(0.2), margin: const EdgeInsets.symmetric(horizontal: 24)),
                      _MiniStat(
-                       label: 'Spent',
+                       label: AppStrings.spent,
                        amount: stats['totalSpent'] ?? 0,
                        icon: LucideIcons.arrowDownCircle,
                        color: Colors.redAccent,
@@ -286,10 +290,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(color: Colors.orange.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                          child: const Icon(LucideIcons.pieChart, size: 18, color: Colors.orange),
+                          child: Icon(LucideIcons.pieChart, size: 18, color: Colors.orange),
                         ),
                         const SizedBox(width: 12),
-                        const Text('Top Spending', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        Text(AppStrings.topSpending, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                       ],
                     ),
                     // Toggle Button
@@ -314,7 +318,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 SizedBox(
                   height: 250,
                   child: chartData.isEmpty
-                      ? Center(child: Text("No data for this month", style: theme.textTheme.bodyMedium))
+                      ? Center(child: Text(AppStrings.noDataMonth, style: theme.textTheme.bodyMedium))
                       : (_isPieChart 
                         ? _buildPieChart(chartData, stats['totalSpent'] ?? 1, provider) 
                         : _buildBarChart(chartData, provider, theme)
@@ -376,12 +380,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Recent Activity',
+                AppStrings.recentActivity,
                 style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
               ),
               TextButton(
                 onPressed: widget.onViewAll, 
-                child: const Text('View All')
+                child: Text(AppStrings.viewAll)
               )
             ],
           ),
@@ -405,19 +409,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         bottom: false, // Ignore the bottom (keyboard/home bar) area
                         child: Wrap(
                           children: [
-                            if (expense.type != 'rollover')
-                              ListTile(
-                                leading: const Icon(Icons.edit),
-                                title: const Text("Edit Transaction"),
-                                onTap: () {
-                                  Navigator.pop(ctx);
-                                  Navigator.push(context, MaterialPageRoute(builder: (_) => AddExpenseScreen(expenseToEdit: expense)));
-                                },
-                              ),
+                              if (expense.type != 'rollover')
+                                ListTile(
+                                  leading: const Icon(Icons.edit),
+                                  title: Text(AppStrings.editTransaction),
+                                  onTap: () {
+                                    Navigator.pop(ctx);
+
+                                    // Check if this expense is linked to a pending insurance claim
+                                    bool isInsurance = false;
+                                    try {
+                                      final claim = provider.insuranceClaims.firstWhere(
+                                        (c) => c.relatedExpenseId == expense.id && c.status == 'pending',
+                                      );
+                                      isInsurance = true;
+                                    } catch (_) {}
+
+                                    if (isInsurance) {
+                                      // Redirect to Insurance Screen
+                                      String? claimId;
+                                      try {
+                                         claimId = provider.insuranceClaims.firstWhere(
+                                          (c) => c.relatedExpenseId == expense.id && c.status == 'pending',
+                                        ).id;
+                                      } catch (_) {}
+                                      
+                                      Navigator.push(context, MaterialPageRoute(builder: (_) => InsuranceScreen(initialEditClaimId: claimId)));
+                                      
+                                    } else {
+                                      // Standard Edit
+                                      Navigator.push(context, MaterialPageRoute(builder: (_) => AddExpenseScreen(expenseToEdit: expense)));
+                                    }
+                                  },
+                                ),
                             if (expense.type == 'loan' && !expense.isReturned)
                               ListTile(
                                 leading: const Icon(LucideIcons.banknote, color: Colors.green),
-                                title: const Text("Record Repayment"),
+                                title: Text(AppStrings.recordRepayment),
                                 onTap: () {
                                   Navigator.pop(ctx);
                                   _showRepaymentDialog(context, expense, provider);
@@ -425,7 +453,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               ),
                             ListTile(
                               leading: const Icon(Icons.delete, color: Colors.red),
-                              title: const Text("Delete Transaction", style: TextStyle(color: Colors.red)),
+                              title: Text(AppStrings.deleteTransaction, style: const TextStyle(color: Colors.red)),
                               onTap: () async {
                                 Navigator.pop(ctx);
                                 if (expense.type == 'rollover') {
@@ -562,7 +590,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         iconKey = catConfig?.icon ?? 'MoreHorizontal';
       }
       
-      return _CategoryDetails(name, value, color, iconKey);
+      return _CategoryDetails(AppStrings.getCategoryName(name), value, color, iconKey);
   }
 
   void _showRepaymentDialog(BuildContext context, dynamic expense, ExpenseProvider provider) {
@@ -572,42 +600,42 @@ class _DashboardScreenState extends State<DashboardScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text("Record Repayment"),
+        title: Text(AppStrings.recordRepayment),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text("${AppStrings.totalLoan}${Utils.formatCurrency(expense.amount)}"),
-            Text("Remaining: ${Utils.formatCurrency(remaining)}"),
+            Text("${AppStrings.remaining}${Utils.formatCurrency(remaining)}"),
             const SizedBox(height: 16),
             TextField(
               controller: controller,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                labelText: "Amount Returned",
-                hintText: "Enter amount",
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.attach_money),
+              decoration: InputDecoration(
+                labelText: AppStrings.amountReturned,
+                hintText: AppStrings.enterAmount,
+                border: const OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.attach_money),
               ),
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(AppStrings.cancel)),
           ElevatedButton(
             onPressed: () {
               final val = double.tryParse(controller.text);
               if (val == null || val <= 0) return;
               if (val > remaining) {
-                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Amount cannot exceed remaining balance")));
+                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppStrings.errorAmountExceeds)));
                  return;
               }
               
               provider.updateRepayment(expense, val);
               Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Repaid ${Utils.formatCurrency(val)}")));
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("${AppStrings.repaidPrefix}${Utils.formatCurrency(val)}")));
             }, 
-            child: const Text("Confirm")
+            child: Text(AppStrings.confirm)
           ),
         ],
       ),

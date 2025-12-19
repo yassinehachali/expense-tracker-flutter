@@ -7,6 +7,7 @@ class FixedChargeModel {
   final String category;
   final int dayOfMonth;
   final bool isAutoApplied;
+  final bool delayedAutoPay;
 
   FixedChargeModel({
     required this.id,
@@ -15,6 +16,7 @@ class FixedChargeModel {
     required this.category,
     required this.dayOfMonth,
     this.isAutoApplied = false,
+    this.delayedAutoPay = false,
   });
 
   Map<String, dynamic> toMap() {
@@ -24,6 +26,7 @@ class FixedChargeModel {
       'category': category,
       'dayOfMonth': dayOfMonth,
       'isAutoApplied': isAutoApplied,
+      'delayedAutoPay': delayedAutoPay,
     };
   }
 
@@ -35,6 +38,7 @@ class FixedChargeModel {
       category: map['category'] ?? 'Other',
       dayOfMonth: map['dayOfMonth'] ?? 1,
       isAutoApplied: map['isAutoApplied'] ?? false,
+      delayedAutoPay: map['delayedAutoPay'] ?? false,
     );
   }
 

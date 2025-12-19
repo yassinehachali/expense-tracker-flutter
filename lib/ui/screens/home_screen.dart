@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart'; // For kIsWeb
 import 'package:provider/provider.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/global_events.dart';
@@ -7,6 +8,7 @@ import 'dashboard_screen.dart';
 import 'transactions_screen.dart';
 import 'settings_screen.dart';
 import 'add_expense_screen.dart';
+import '../../core/app_strings.dart';
 import '../../data/services/notification_service.dart'; 
 
 class HomeScreen extends StatefulWidget {
@@ -38,20 +40,38 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     });
 
-    // Request Notification Permissions if needed (Android 13+)
-    Future.delayed(const Duration(seconds: 2), () async {
-       if (mounted) {
-         try {
-           final granted = await NotificationService().requestPermissions();
-           if (granted == true && mounted) {
-             // Re-schedule to ensure exact alarm intent is allowed and timezones are correct
-             await NotificationService().scheduleDailyNotification(21, 0); 
-           }
-         } catch (e) {
-           print("Permission request error: $e");
+    // Initialize Notifications
+    if (!kIsWeb) {
+      _initNotifications();
+    }
+  }
+
+  Future<void> _initNotifications() async {
+    try {
+      final ns = NotificationService();
+      
+      // 1. Initialize (Create channels, load timezone, set listeners)
+      await ns.init((response) {
+         if (response.payload == 'update_check') {
+            GlobalEvents.trigger('open_update_check');
          }
-       }
-    });
+      });
+
+      // 2. Wait for UI to settle before asking permissions
+      await Future.delayed(const Duration(seconds: 2));
+      if (!mounted) return;
+
+      // 3. Request Permissions
+      final granted = await ns.requestPermissions();
+      
+      // 4. Schedule Daily Reminder
+      // (If granted is null, it means Android <13, permission implied)
+      if (granted != false) {
+         await ns.scheduleDailyNotification(21, 0); 
+      }
+    } catch (e) {
+      print("Notification init error: $e");
+    }
   }
 
   void _openAddExpense() {
@@ -125,18 +145,18 @@ class _HomeScreenState extends State<HomeScreen> {
           showSelectedLabels: true,
           showUnselectedLabels: true,
           type: BottomNavigationBarType.fixed,
-          items: const [
+          items: [
             BottomNavigationBarItem(
-              icon: Icon(LucideIcons.layoutGrid),
-              label: 'Dashboard',
+              icon: const Icon(LucideIcons.layoutGrid),
+              label: AppStrings.dashboard,
             ),
             BottomNavigationBarItem(
-              icon: Icon(LucideIcons.history),
-              label: 'History',
+              icon: const Icon(LucideIcons.history),
+              label: AppStrings.historyTitle,
             ),
             BottomNavigationBarItem(
-              icon: Icon(LucideIcons.settings),
-              label: 'Settings',
+              icon: const Icon(LucideIcons.settings),
+              label: AppStrings.settingsTitle,
             ),
           ],
         ),

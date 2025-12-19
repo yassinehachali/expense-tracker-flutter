@@ -45,7 +45,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final theme = Theme.of(context);
 
       return Scaffold(
-        appBar: AppBar(title: const Text(AppStrings.settingsTitle), centerTitle: false),
+        appBar: AppBar(title: Text(AppStrings.settingsTitle), centerTitle: false),
         body: ListView(
           children: [
             // Profile Section
@@ -65,7 +65,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             // Salary Configuration
             ListTile(
               leading: const Icon(LucideIcons.briefcase),
-              title: const Text(AppStrings.salaryCycleOption),
+              title: Text(AppStrings.salaryCycleOption),
               subtitle: Text("${Utils.formatCurrency(expenseProvider.currentCycleSalary)} (${Utils.formatDate(expenseProvider.currentCycleStart)} - ${Utils.formatDate(expenseProvider.currentCycleEnd)})"),
               trailing: const Icon(Icons.chevron_right),
               onTap: () {
@@ -75,8 +75,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             
             ListTile(
               leading: const Icon(LucideIcons.list),
-              title: const Text(AppStrings.categoriesOption),
-              subtitle: const Text(AppStrings.categoriesSubtitle),
+              title: Text(AppStrings.categoriesOption),
+              subtitle: Text(AppStrings.categoriesSubtitle),
               trailing: const Icon(Icons.chevron_right),
               onTap: () {
                 Navigator.push(context, MaterialPageRoute(builder: (_) => const CategoryScreen()));
@@ -85,8 +85,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             
             ListTile(
               leading: const Icon(LucideIcons.calendarClock),
-              title: const Text("Fixed Charges"),
-              subtitle: const Text("Manage recurring expenses"),
+              title: Text(AppStrings.fixedCharges),
+              subtitle: Text(AppStrings.fixedChargesDesc),
               trailing: const Icon(Icons.chevron_right),
               onTap: () {
                 Navigator.push(context, MaterialPageRoute(builder: (_) => const FixedChargesScreen()));
@@ -95,8 +95,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             
             ListTile(
               leading: const Icon(LucideIcons.heartPulse),
-              title: const Text("Health Insurance"),
-              subtitle: const Text("Track claims and refunds"),
+              title: Text(AppStrings.healthInsuranceTitle),
+              subtitle: Text(AppStrings.healthInsuranceDesc),
               trailing: const Icon(Icons.chevron_right),
               onTap: () {
                 Navigator.push(context, MaterialPageRoute(builder: (_) => const InsuranceScreen()));
@@ -105,8 +105,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             
             ListTile(
               leading: const Icon(LucideIcons.coins),
-              title: const Text(AppStrings.loansManager),
-              subtitle: const Text("Manage borrowed debts"),
+              title: Text(AppStrings.loansManager),
+              subtitle: Text(AppStrings.manageDebtsDesc),
               trailing: const Icon(Icons.chevron_right),
               onTap: () {
                 Navigator.push(context, MaterialPageRoute(builder: (_) => const LoansManagerScreen()));
@@ -116,21 +116,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
             if (auth.user?.email != null) // Only show for logged in users
                ListTile(
                 leading: const Icon(LucideIcons.lock),
-                title: const Text(AppStrings.changePasswordOption),
+                title: Text(AppStrings.changePasswordOption),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () {
                   _showChangePasswordDialog(context, auth);
                 },
               ),
-
-            if (!kIsWeb) // Auto-update is only for Android APKs
+              
+            if (!kIsWeb) 
               ListTile(
                 leading: const Icon(LucideIcons.downloadCloud),
-                title: const Text(AppStrings.checkUpdatesOption),
+                title: Text(AppStrings.checkUpdatesOption),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () {
-                  _checkForUpdates(context);
+                  // Navigate to updates or check updates
+                  // For now assuming it shows a dialog or similar
+                  UpdateService.checkAndNotify(manualCheck: true, context: context);
                 },
+              ),
+
+              ListTile(
+                leading: const Icon(LucideIcons.globe, color: Colors.blue),
+                title: Text(AppStrings.languageOption),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _showLanguageDialog(context, expenseProvider),
               ),
 
             const Divider(),
@@ -138,7 +147,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             // Danger Zone
             ListTile(
               leading: const Icon(LucideIcons.trash2, color: Colors.red),
-              title: const Text(AppStrings.resetDataOption, style: TextStyle(color: Colors.red)),
+              title: Text(AppStrings.resetDataOption, style: const TextStyle(color: Colors.red)),
               onTap: () {
                  _showResetDialog(context, expenseProvider);
               },
@@ -146,7 +155,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             
              ListTile(
               leading: const Icon(LucideIcons.logOut),
-              title: const Text(AppStrings.logoutOption),
+              title: Text(AppStrings.logoutOption),
               onTap: () async {
                 await auth.signOut();
               },
@@ -159,7 +168,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 if (snapshot.hasData) {
                   return Center(
                     child: Text(
-                      "v${snapshot.data!.version}",
+                      "${AppStrings.versionPrefix}${snapshot.data!.version}",
                       style: TextStyle(
                         color: theme.brightness == Brightness.dark ? Colors.grey[600] : Colors.grey[400],
                         fontSize: 12
@@ -184,6 +193,59 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       );
     }
+  }
+
+  void _showLanguageDialog(BuildContext context, ExpenseProvider provider) {
+    String selected = provider.settings?.language ?? 'en';
+    
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: Text(AppStrings.selectLanguage),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                RadioListTile<String>(
+                  title: const Text("English"),
+                  value: 'en',
+                  groupValue: selected,
+                  onChanged: (val) {
+                    setState(() => selected = val!);
+                    provider.setLanguage(val!);
+                    Navigator.pop(ctx);
+                  },
+                ),
+                RadioListTile<String>(
+                  title: const Text("Français"),
+                  value: 'fr',
+                  groupValue: selected,
+                  onChanged: (val) {
+                    setState(() => selected = val!);
+                    provider.setLanguage(val!);
+                    Navigator.pop(ctx);
+                  },
+                ),
+                RadioListTile<String>(
+                  title: const Text("العربية"),
+                  value: 'ar',
+                  groupValue: selected,
+                  onChanged: (val) {
+                    setState(() => selected = val!);
+                    provider.setLanguage(val!);
+                    Navigator.pop(ctx);
+                  },
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Close")),
+            ],
+          );
+        }
+      ),
+    );
   }
 
   void _showSalaryDialog(BuildContext context, ExpenseProvider provider) {
@@ -223,7 +285,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                   const Text(
+                   Text(
                     AppStrings.customizeCycle,
                     style: TextStyle(fontSize: 12, color: Colors.grey),
                   ),
@@ -231,13 +293,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   TextField(
                     controller: controller,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: AppStrings.salaryAmount, 
                       prefixText: "DH "
                     ),
                   ),
                   const SizedBox(height: 16),
-                  const Text(AppStrings.cycleStartsIn),
+                  Text(AppStrings.cycleStartsIn),
                   Row(
                     children: [
                       // Month Selector (Prev vs Current)
@@ -278,7 +340,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text(AppStrings.cancel)),
+              TextButton(onPressed: () => Navigator.pop(ctx), child: Text(AppStrings.cancel)),
               TextButton(
                 onPressed: () async {
                   final val = double.tryParse(controller.text) ?? 0;
@@ -294,7 +356,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   
                   if (ctx.mounted) Navigator.pop(ctx);
                 }, 
-                child: const Text(AppStrings.save)
+                child: Text(AppStrings.save)
               ),
             ],
           );
@@ -311,7 +373,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text(AppStrings.changePasswordOption),
+        title: Text(AppStrings.changePasswordOption),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -319,25 +381,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
               TextField(
                 controller: currentPassController,
                 obscureText: true,
-                decoration: const InputDecoration(labelText: AppStrings.currentPassword),
+                decoration: InputDecoration(labelText: AppStrings.currentPassword),
               ),
               const SizedBox(height: 16),
               TextField(
                 controller: newPassController,
                 obscureText: true,
-                decoration: const InputDecoration(labelText: AppStrings.newPassword),
+                decoration: InputDecoration(labelText: AppStrings.newPassword),
               ),
               const SizedBox(height: 16),
               TextField(
                 controller: confirmPassController,
                 obscureText: true,
-                decoration: const InputDecoration(labelText: AppStrings.confirmNewPassword),
+                decoration: InputDecoration(labelText: AppStrings.confirmNewPassword),
               ),
             ],
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text(AppStrings.cancel)),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(AppStrings.cancel)),
           TextButton(
             onPressed: () async {
               final current = currentPassController.text;
@@ -345,11 +407,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               final confirm = confirmPassController.text;
 
               if (newPass != confirm) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text(AppStrings.newPasswordMismatch)));
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppStrings.newPasswordMismatch)));
                 return;
               }
               if (newPass.length < 6) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text(AppStrings.passwordLength)));
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppStrings.passwordLength)));
                 return;
               }
 
@@ -359,7 +421,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 await auth.changePassword(current, newPass);
                 if (ctx.mounted) {
                   Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text(AppStrings.passwordUpdateSuccess)));
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppStrings.passwordUpdateSuccess)));
                 }
               } catch (e) {
                 if (ctx.mounted) {
@@ -375,22 +437,62 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _showResetDialog(BuildContext context, ExpenseProvider provider) {
+    final confirmationCtrl = TextEditingController();
+    
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text(AppStrings.resetDataTitle),
-        content: const Text(AppStrings.resetDataConfirm),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text(AppStrings.cancel)),
-          TextButton(
-            onPressed: () async {
-              await provider.resetData();
-              if (ctx.mounted) Navigator.pop(ctx);
-            }, 
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text(AppStrings.deleteAll)
-          ),
-        ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setState) {
+          final isMatch = confirmationCtrl.text.trim().toLowerCase() == 'delete';
+          
+          return AlertDialog(
+            title: Text(AppStrings.resetDataTitle),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(AppStrings.resetDataConfirm),
+                const SizedBox(height: 16),
+                Text(
+                  AppStrings.typeDeleteToConfirm,
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: confirmationCtrl,
+                  decoration: InputDecoration(
+                    hintText: "delete",
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  ),
+                  onChanged: (val) => setState(() {}),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: Text(AppStrings.cancel)),
+              ElevatedButton.icon(
+                onPressed: isMatch 
+                  ? () async {
+                      await provider.resetData();
+                      if (ctx.mounted) Navigator.pop(ctx);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppStrings.allDataReset)));
+                      }
+                    }
+                  : null, 
+                icon: const Icon(LucideIcons.trash2, size: 16),
+                label: Text(AppStrings.deleteAll),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                  disabledBackgroundColor: Colors.red.withOpacity(0.3),
+                  disabledForegroundColor: Colors.white.withOpacity(0.5),
+                ),
+              ),
+            ],
+          );
+        }
       ),
     );
   }
@@ -418,28 +520,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
           showDialog(
             context: context,
             builder: (ctx) => AlertDialog(
-              title: const Text(AppStrings.updateAvailableTitle),
+              title: Text(AppStrings.updateAvailableTitle),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text("Version: ${updateData['version']}", style: const TextStyle(fontWeight: FontWeight.bold)),
+                    Text("${AppStrings.versionPrefix}${updateData['version']}", style: const TextStyle(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
-                    const Text(AppStrings.changelog),
+                    Text(AppStrings.changelog),
                     const SizedBox(height: 4),
                     Text(updateData['changelog']),
                   ],
                 ),
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text(AppStrings.later)),
+                TextButton(onPressed: () => Navigator.pop(ctx), child: Text(AppStrings.later)),
                 TextButton(
                   onPressed: () {
                     Navigator.pop(ctx);
                     _startUpdate(context, updateData['url']);
                   },
-                  child: const Text(AppStrings.updateNow),
+                  child: Text(AppStrings.updateNow),
                 ),
               ],
             ),
@@ -451,7 +553,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           );
         }
       } else {
-         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("${AppStrings.checkFailed} (No response)")));
+         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("${AppStrings.checkFailed} (No response)")));
       }
     } catch (e) {
       if (context.mounted) {
@@ -501,7 +603,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                    } else {
                      if (context.mounted) {
                         Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text(AppStrings.downloadFailed)));
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppStrings.downloadFailed)));
                      }
                    }
                  }
@@ -509,7 +611,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             }
 
             return AlertDialog(
-              title: const Text("Updating..."), // Could assume this is part of transient UI or add to strings if critical
+              title: Text(AppStrings.updatingTitle), // Could assume this is part of transient UI or add to strings if critical
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [

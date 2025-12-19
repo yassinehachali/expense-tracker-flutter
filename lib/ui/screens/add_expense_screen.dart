@@ -59,7 +59,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     if (amountText.isEmpty) return;
     final amount = double.tryParse(amountText);
     if (amount == null || amount <= 0) {
-       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text(AppStrings.invalidAmount)));
+       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppStrings.invalidAmount)));
        return;
     }
 
@@ -193,7 +193,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(AppStrings.categoryLabel, style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text(AppStrings.categoryLabel, style: const TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -213,7 +213,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                                children: [
                                  CategoryIcon(iconKey: cat.icon, size: 18, color: theme.iconTheme.color),
                                  const SizedBox(width: 12),
-                                 Text(cat.name),
+                                 Text(AppStrings.getCategoryName(cat.name)),
                                ],
                              ),
                            );
@@ -236,6 +236,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                    initialDate: _selectedDate,
                    firstDate: DateTime(2020),
                    lastDate: DateTime(2030),
+                   locale: Locale(AppStrings.language),
                  );
                  if (picked != null) setState(() => _selectedDate = picked);
                },
@@ -253,7 +254,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                      Column(
                        crossAxisAlignment: CrossAxisAlignment.start,
                        children: [
-                         const Text(AppStrings.dateLabel, style: TextStyle(fontSize: 12, color: Colors.grey)),
+                         Text(AppStrings.dateLabel, style: const TextStyle(fontSize: 12, color: Colors.grey)),
                          Text(DateFormat.yMMMd().format(_selectedDate), style: const TextStyle(fontWeight: FontWeight.bold)),
                        ],
                      ),
@@ -281,7 +282,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                  ),
                  child: _isLoading 
                     ? const CircularProgressIndicator(color: Colors.white) 
-                    : const Text(AppStrings.saveTransaction, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    : Text(AppStrings.saveTransaction, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                ),
              ),
           ],

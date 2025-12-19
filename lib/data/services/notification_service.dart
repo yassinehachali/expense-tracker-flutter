@@ -1,4 +1,4 @@
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart' as fln;
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import 'package:flutter/services.dart'; // For MethodChannel
@@ -13,13 +13,13 @@ class NotificationService {
 
   NotificationService._internal();
 
-  final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+  final fln.FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = fln.FlutterLocalNotificationsPlugin();
   
   static const platform = MethodChannel('com.example.expense_tracker/timezone');
 
   bool _isInitialized = false;
 
-  Future<void> init(Function(NotificationResponse)? onResponse) async {
+  Future<void> init(Function(fln.NotificationResponse)? onResponse) async {
     if (_isInitialized) return;
 
     // Initialize Time Zones
@@ -32,14 +32,14 @@ class NotificationService {
     }
 
     // Android Setup
-    const AndroidInitializationSettings initializationSettingsAndroid =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+    const fln.AndroidInitializationSettings initializationSettingsAndroid =
+        fln.AndroidInitializationSettings('@mipmap/ic_launcher');
 
     // iOS Setup
-    const DarwinInitializationSettings initializationSettingsDarwin =
-        DarwinInitializationSettings();
+    const fln.DarwinInitializationSettings initializationSettingsDarwin =
+        fln.DarwinInitializationSettings();
 
-    final InitializationSettings initializationSettings = InitializationSettings(
+    final fln.InitializationSettings initializationSettings = fln.InitializationSettings(
       android: initializationSettingsAndroid,
       iOS: initializationSettingsDarwin,
     );
@@ -50,23 +50,23 @@ class NotificationService {
     );
     
     // Create Channel
-    const AndroidNotificationChannel channel = AndroidNotificationChannel(
+    fln.AndroidNotificationChannel channel = fln.AndroidNotificationChannel(
       AppStrings.updatesChannelId,
       AppStrings.updatesChannelName,
       description: AppStrings.updatesChannelDesc,
-      importance: Importance.high,
+      importance: fln.Importance.high,
     );
 
     // Create Reminder Channel
-    const AndroidNotificationChannel reminderChannel = AndroidNotificationChannel(
+    fln.AndroidNotificationChannel reminderChannel = fln.AndroidNotificationChannel(
       AppStrings.reminderChannelId,
       AppStrings.reminderChannelName,
       description: AppStrings.reminderChannelDesc,
-      importance: Importance.high,
+      importance: fln.Importance.high,
     );
 
     final androidImplementation = flutterLocalNotificationsPlugin
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+        .resolvePlatformSpecificImplementation<fln.AndroidFlutterLocalNotificationsPlugin>();
     
     if (androidImplementation != null) {
       await androidImplementation.createNotificationChannel(channel);
@@ -78,7 +78,7 @@ class NotificationService {
 
   Future<bool?> requestPermissions() async {
     final androidImplementation = flutterLocalNotificationsPlugin
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+        .resolvePlatformSpecificImplementation<fln.AndroidFlutterLocalNotificationsPlugin>();
     
     if (androidImplementation != null) {
       return await androidImplementation.requestNotificationsPermission();
@@ -89,18 +89,18 @@ class NotificationService {
 
 
   Future<void> showUpdateNotification(String version, String body) async {
-    const AndroidNotificationDetails androidPlatformChannelSpecifics =
-        AndroidNotificationDetails(
+    fln.AndroidNotificationDetails androidPlatformChannelSpecifics =
+        fln.AndroidNotificationDetails(
       AppStrings.updatesChannelId,
       AppStrings.updatesChannelName,
       channelDescription: AppStrings.updatesChannelDesc,
-      importance: Importance.high,
-      priority: Priority.high,
+      importance: fln.Importance.high,
+      priority: fln.Priority.high,
       icon: '@mipmap/ic_launcher',
     );
     
-    const NotificationDetails platformChannelSpecifics =
-        NotificationDetails(android: androidPlatformChannelSpecifics);
+    fln.NotificationDetails platformChannelSpecifics =
+        fln.NotificationDetails(android: androidPlatformChannelSpecifics);
 
     await flutterLocalNotificationsPlugin.show(
       0, // ID
@@ -112,24 +112,29 @@ class NotificationService {
   }
 
   Future<void> scheduleDailyNotification(int hour, int minute) async {
+    // zonedSchedule is not supported on Web and causes compilation errors due to missing symbols.
+    // Temporarily disabled for Web compatibility.
+    print("Daily reminder scheduling is not supported on this platform.");
+    /*
     await flutterLocalNotificationsPlugin.zonedSchedule(
         1, // Reminder ID
         AppStrings.dailyReminderTitle,
         AppStrings.dailyReminderBody,
         _nextInstanceOfTime(hour, minute),
-        const NotificationDetails(
-            android: AndroidNotificationDetails(
+        fln.NotificationDetails(
+            android: fln.AndroidNotificationDetails(
                 AppStrings.reminderChannelId,
                 AppStrings.reminderChannelName,
                 channelDescription: AppStrings.reminderChannelDesc,
-                importance: Importance.high,
-                priority: Priority.high,
+                importance: fln.Importance.high,
+                priority: fln.Priority.high,
                 icon: '@mipmap/ic_launcher',
             )),
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        androidScheduleMode: fln.AndroidScheduleMode.alarmClock,
         uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
-        matchDateTimeComponents: DateTimeComponents.time);
+            fln.UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: fln.DateTimeComponents.time);
+    */
   }
 
   tz.TZDateTime _nextInstanceOfTime(int hour, int minute) {

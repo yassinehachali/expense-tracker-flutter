@@ -9,6 +9,8 @@ import 'providers/auth_provider.dart';
 import 'providers/expense_provider.dart';
 import 'ui/screens/login_screen.dart';
 import 'ui/screens/home_screen.dart';
+import 'package:flutter_localizations/flutter_localizations.dart'; 
+import 'core/app_strings.dart';
 
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:workmanager/workmanager.dart';
@@ -42,19 +44,7 @@ void main() async {
   // Background Updates are for Android/iOS only, not Web
   if (!kIsWeb) {
     try {
-      // Initialize Notification Service
-      final notificationService = NotificationService();
-      await notificationService.init((NotificationResponse response) {
-         // Handle tap
-         if (response.payload == 'update_check') {
-            GlobalEvents.trigger('open_update_check');
-         }
-      });
-      
-      // Schedule Daily Reminder (9 PM)
-      await notificationService.scheduleDailyNotification(21, 0);
-
-      // Initialize Workmanager
+      // Initialize Workmanager for background updates (runs in checkAndNotify)
       await Workmanager().initialize(
           callbackDispatcher, 
           isInDebugMode: false 
@@ -93,13 +83,28 @@ class MyApp extends StatelessWidget {
           },
         ),
       ],
-      child: MaterialApp(
-        title: 'Expense Tracker',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.lightTheme,
-        darkTheme: AppTheme.darkTheme,
-        themeMode: ThemeMode.system, // Or handle state for this
-        home: const AuthWrapper(),
+      child: Consumer<ExpenseProvider>(
+        builder: (context, provider, _) {
+          return MaterialApp(
+            title: AppStrings.appTitle,
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.lightTheme,
+            darkTheme: AppTheme.darkTheme,
+            themeMode: ThemeMode.system, 
+            locale: Locale(provider.settings?.language ?? 'en'),
+            supportedLocales: const [
+              Locale('en', ''),
+              Locale('fr', ''),
+              Locale('ar', ''),
+            ],
+            localizationsDelegates: const [
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            home: const AuthWrapper(),
+          );
+        }
       ),
     );
   }

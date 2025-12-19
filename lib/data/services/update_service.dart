@@ -5,7 +5,9 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import '../../core/app_strings.dart';
 import 'notification_service.dart';
 
 class UpdateService {
@@ -116,9 +118,12 @@ class UpdateService {
 
   // --- Background Helper ---
   
-  static Future<void> checkAndNotify() async {
-    print("Background Update Check Started");
+  static Future<void> checkAndNotify({bool manualCheck = false, BuildContext? context}) async {
+    print("Background Update Check Started (Manual: $manualCheck)");
     try {
+      // Ensure initialized in background isolate
+      await NotificationService().init(null);
+
       final service = UpdateService();
       final result = await service.checkForUpdate();
       
@@ -126,15 +131,22 @@ class UpdateService {
         final version = result['version'];
         final changelog = result['changelog']; // Can be long, maybe truncate
         
+        if (manualCheck && context != null) {
+             ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("${AppStrings.updateTitle}v$version")));
+        }
+
         await NotificationService().showUpdateNotification(
           version,
-          "New version $version available! Tap to upate.",
+          AppStrings.updateBody
         );
-      } else {
-        print("No update found in background.");
+      } else if (manualCheck && context != null) {
+         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppStrings.upToDate)));
       }
     } catch (e) {
-      print("Background Check Error: $e");
+      print("Update check failed: $e");
+      if (manualCheck && context != null) {
+         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("${AppStrings.checkFailed}: $e")));
+      }
     }
   }
 }

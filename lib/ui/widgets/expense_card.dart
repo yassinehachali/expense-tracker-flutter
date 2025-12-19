@@ -99,14 +99,14 @@ class ExpenseCard extends StatelessWidget {
           context: context,
           builder: (ctx) => AlertDialog(
             backgroundColor: theme.cardColor,
-            title: const Text(AppStrings.deleteConfirmationTitle),
-            content: const Text(AppStrings.deleteConfirmationBody),
+            title: Text(AppStrings.deleteConfirmationTitle),
+            content: Text(AppStrings.deleteConfirmationBody),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text(AppStrings.cancel)),
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(AppStrings.cancel)),
               TextButton(
                 onPressed: () => Navigator.pop(ctx, true), 
                 style: TextButton.styleFrom(foregroundColor: Colors.red),
-                child: const Text(AppStrings.deleteAction)
+                child: Text(AppStrings.deleteAction)
               ),
             ],
           ),
@@ -147,7 +147,7 @@ class ExpenseCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                    Text(
-                     expense.description.isNotEmpty ? expense.description : expense.category,
+                     expense.description.isNotEmpty ? expense.description : AppStrings.getCategoryName(expense.category),
                      style: theme.textTheme.bodyLarge?.copyWith(
                        fontWeight: FontWeight.bold,
                        decoration: isReturnedLoan ? TextDecoration.lineThrough : null,
@@ -158,7 +158,7 @@ class ExpenseCard extends StatelessWidget {
                    ),
                    const SizedBox(height: 4),
                    Text(
-                     isReturnedLoan ? AppStrings.loanReturned : DateFormat.yMMMd().format(DateTime.parse(expense.date)),
+                     isReturnedLoan ? AppStrings.loanReturned : Utils.formatDate(DateTime.parse(expense.date)),
                      style: theme.textTheme.bodySmall?.copyWith(
                        color: isReturnedLoan ? Colors.green : null
                      ),

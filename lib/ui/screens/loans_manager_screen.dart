@@ -37,7 +37,7 @@ class LoansManagerScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(AppStrings.loansManager),
+        title: Text(AppStrings.loansManager),
         centerTitle: true,
       ),
       body: SingleChildScrollView(
@@ -59,7 +59,7 @@ class LoansManagerScreen extends StatelessWidget {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(AppStrings.totalBorrowed, style: TextStyle(color: Colors.white70)),
+                      Text(AppStrings.totalBorrowed, style: const TextStyle(color: Colors.white70)),
                       const SizedBox(height: 8),
                       Text(
                         Utils.formatCurrency(totalBorrowed),
@@ -67,7 +67,7 @@ class LoansManagerScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                        Text(
-                        "Repaid: ${Utils.formatCurrency(totalRepaid)}",
+                        "${AppStrings.repaidPrefix}${Utils.formatCurrency(totalRepaid)}",
                         style: const TextStyle(fontSize: 14, color: Colors.white70),
                       ),
                     ],
@@ -94,7 +94,7 @@ class LoansManagerScreen extends StatelessWidget {
                     children: [
                       Icon(LucideIcons.checkCircle, size: 60, color: theme.dividerColor),
                       const SizedBox(height: 16),
-                      Text("You have no debts!", style: theme.textTheme.titleMedium?.copyWith(color: theme.hintColor)),
+                      Text(AppStrings.noDebtsMessage, style: theme.textTheme.titleMedium?.copyWith(color: theme.hintColor)),
                     ],
                   ),
                 ),
@@ -142,7 +142,7 @@ class LoansManagerScreen extends StatelessWidget {
                                    crossAxisAlignment: CrossAxisAlignment.start,
                                    children: [
                                      Text(
-                                       loan.description.isNotEmpty ? loan.description : "Unknown Lender",
+                                       loan.description.isNotEmpty ? loan.description : AppStrings.unknownLender,
                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                                      ),
                                      Text(
@@ -166,7 +166,7 @@ class LoansManagerScreen extends StatelessWidget {
                              Column(
                                crossAxisAlignment: CrossAxisAlignment.start,
                                children: [
-                                 Text("Remaining", style: theme.textTheme.bodySmall),
+                                 Text(AppStrings.remaining.replaceAll(':', ''), style: theme.textTheme.bodySmall),
                                  Text(
                                    Utils.formatCurrency(remaining),
                                    style: TextStyle(
@@ -185,7 +185,7 @@ class LoansManagerScreen extends StatelessWidget {
                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                                  ),
-                                 child: const Text(AppStrings.repay),
+                                 child: Text(AppStrings.repay),
                                )
                            ],
                          ),
@@ -214,42 +214,42 @@ class LoansManagerScreen extends StatelessWidget {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text("Repay Loan"),
+        title: Text(AppStrings.repayLoanTitle),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-             Text("Total Borrowed: ${Utils.formatCurrency(loan.amount)}"),
-             Text("Remaining: ${Utils.formatCurrency(remaining)}"),
+             Text("${AppStrings.totalBorrowed}${Utils.formatCurrency(loan.amount)}"),
+             Text("${AppStrings.remaining}${Utils.formatCurrency(remaining)}"),
              const SizedBox(height: 16),
              TextField(
                controller: controller,
                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-               decoration: const InputDecoration(
-                 labelText: "Repayment Amount",
-                 hintText: "Enter amount",
-                 border: OutlineInputBorder(),
-                 prefixIcon: Icon(Icons.attach_money),
-               ),
+                decoration: InputDecoration(
+                  labelText: AppStrings.amountLabel,
+                  hintText: AppStrings.enterAmount,
+                  border: const OutlineInputBorder(),
+                  prefixIcon: const Icon(Icons.attach_money),
+                ),
              ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(AppStrings.cancel)),
           ElevatedButton(
             onPressed: () {
                final val = double.tryParse(controller.text);
                if (val == null || val <= 0) return;
                if (val > remaining) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Amount exceeds remaining debt")));
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppStrings.amountExceedsDebt)));
                   return;
                }
                
                provider.repayBorrowing(loan, val);
                Navigator.pop(ctx);
-               ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Repaid ${Utils.formatCurrency(val)}")));
+               ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("${AppStrings.repaidPrefix}${Utils.formatCurrency(val)}")));
             }, 
-            child: const Text("Confirm")
+            child: Text(AppStrings.confirm)
           ),
         ],
       ),

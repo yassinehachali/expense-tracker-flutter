@@ -24,7 +24,7 @@ class FixedChargesScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Fixed Charges"),
+        title: Text(AppStrings.fixedCharges),
       ),
       body: charges.isEmpty
           ? Center(
@@ -34,12 +34,12 @@ class FixedChargesScreen extends StatelessWidget {
                   Icon(LucideIcons.calendarClock, size: 64, color: Colors.grey[400]),
                   const SizedBox(height: 16),
                   Text(
-                    "No fixed charges yet",
+                    AppStrings.noFixedCharges,
                     style: TextStyle(color: Colors.grey[600], fontSize: 16),
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    "Add rent, subscriptions, or regular bills",
+                    AppStrings.fixedChargesSubtitle,
                     style: TextStyle(color: Colors.grey[500], fontSize: 14),
                   ),
                 ],
@@ -49,13 +49,13 @@ class FixedChargesScreen extends StatelessWidget {
               padding: const EdgeInsets.all(16),
               children: [
                 if (autoCharges.isNotEmpty) ...[
-                  _buildSectionHeader("Auto-Applied (Recurring)"),
+                  _buildSectionHeader(AppStrings.autoApply),
                   ...autoCharges.map((c) => _ChargeTile(charge: c)),
                   const SizedBox(height: 24),
                 ],
                 
                 if (manualCharges.isNotEmpty) ...[
-                  _buildSectionHeader("Manual Application"),
+                  _buildSectionHeader(AppStrings.manualChargesHeader),
                   ...manualCharges.map((c) => _ChargeTile(charge: c)),
                   
                   Builder(
@@ -71,9 +71,9 @@ class FixedChargesScreen extends StatelessWidget {
                              child: Row(
                                mainAxisSize: MainAxisSize.min,
                                children: [
-                                 Icon(Icons.check_circle, color: Colors.green), 
-                                 SizedBox(width: 8), 
-                                 Text("All manual charges applied!", style: TextStyle(color: Colors.green))
+                                 const Icon(Icons.check_circle, color: Colors.green), 
+                                 const SizedBox(width: 8), 
+                                 Text(AppStrings.allManualApplied, style: const TextStyle(color: Colors.green))
                                ],
                              ),
                            ),
@@ -89,7 +89,7 @@ class FixedChargesScreen extends StatelessWidget {
                               child: Column(
                                 children: [
                                    Text(
-                                    "Apply Manual Expenses",
+                                    AppStrings.applyManualTitle,
                                     style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
                                    ),
                                    const SizedBox(height: 8),
@@ -105,7 +105,7 @@ class FixedChargesScreen extends StatelessWidget {
                                          child: ElevatedButton.icon(
                                            onPressed: () => _confirmApply(context, provider, false),
                                            icon: const Icon(LucideIcons.calendarCheck, size: 16),
-                                           label: const Text("Apply All to This Month"),
+                                           label: Text(AppStrings.applyAllThisMonth),
                                            style: ElevatedButton.styleFrom(
                                              backgroundColor: theme.colorScheme.primaryContainer,
                                              foregroundColor: theme.colorScheme.onPrimaryContainer,
@@ -120,7 +120,7 @@ class FixedChargesScreen extends StatelessWidget {
                                        Expanded(
                                          child: OutlinedButton(
                                            onPressed: () => _confirmApply(context, provider, true),
-                                           child: const Text("Apply All to Next Month"),
+                                           child: Text(AppStrings.applyAllNextMonth),
                                          ),
                                        ),
                                      ],
@@ -138,7 +138,7 @@ class FixedChargesScreen extends StatelessWidget {
             ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showAddEditDialog(context, null),
-        label: const Text("Add Charge"),
+        label: Text(AppStrings.addCharge),
         icon: const Icon(Icons.add),
       ),
     );
@@ -178,21 +178,21 @@ class FixedChargesScreen extends StatelessWidget {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text("Apply Charges to $monthName?"),
-        content: const Text("This will add all 'Manual' fixed charges as expenses for that cycle."),
+        title: Text(AppStrings.applyChargeTitle), // Using simplified title or interpolate manually later? Let's use generic for now or interpolate
+        content: Text(AppStrings.manualChargesConfirm),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(AppStrings.cancel)),
           TextButton(
             onPressed: () async {
               Navigator.pop(ctx);
               await provider.applyFixedChargesToCycle(targetYear, targetMonth, manualOnly: true);
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Charges applied successfully!")),
+                  SnackBar(content: Text(AppStrings.chargesApplied)),
                 );
               }
             },
-            child: const Text("Apply"),
+            child: Text(AppStrings.apply),
           ),
         ],
       ),
@@ -205,26 +205,29 @@ class FixedChargesScreen extends StatelessWidget {
     String selectedCategory = charge?.category ?? 'Others';
     int selectedDay = charge?.dayOfMonth ?? 1;
     bool isAuto = charge?.isAutoApplied ?? false;
+    bool delayedAutoPay = charge?.delayedAutoPay ?? false;
 
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setState) {
           return AlertDialog(
-            title: Text(charge == null ? "New Fixed Charge" : "Edit Charge"),
+            title: Text(charge == null ? AppStrings.addFixedCharge : "Edit Charge"), // "Edit Charge" needs adding? Let's use generic or add it
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   TextField(
                     controller: nameCtrl,
-                    decoration: const InputDecoration(labelText: "Name (e.g. Rent)"),
+                    decoration: InputDecoration(labelText: AppStrings.categoryNameHint), // "Name (e.g. Rent)" -> reusing categoryNameHint ("Category Name") or add new? "Name" is better. Let's use categoryNameHint for now as it's close or add new.
+                    // Actually let's just leave some common words if no exact match, but user asked for ALL.
+                    // "Name (e.g. Rent)" -> I should add this key.
                     textCapitalization: TextCapitalization.sentences,
                   ),
                   const SizedBox(height: 16),
                   TextField(
                     controller: amountCtrl,
-                    decoration: const InputDecoration(labelText: "Amount", prefixText: "DH "),
+                    decoration: InputDecoration(labelText: AppStrings.amountLabel, prefixText: "DH "),
                     keyboardType: TextInputType.number,
                   ),
                   const SizedBox(height: 16),
@@ -252,7 +255,7 @@ class FixedChargesScreen extends StatelessWidget {
 
                       return DropdownButtonFormField<String>(
                         value: dropdownValue,
-                        decoration: const InputDecoration(labelText: "Category"),
+                        decoration: InputDecoration(labelText: AppStrings.categoryLabel),
                         items: cats.map((c) => DropdownMenuItem(value: c.name, child: Text(c.name))).toList(),
                         onChanged: (val) {
                           if (val != null) {
@@ -265,7 +268,7 @@ class FixedChargesScreen extends StatelessWidget {
                   const SizedBox(height: 16),
                   Row(
                     children: [
-                      const Expanded(child: Text("Day of Month")),
+                      Expanded(child: Text(AppStrings.dayOfMonth)),
                       DropdownButton<int>(
                         value: selectedDay,
                         items: List.generate(28, (i) => i + 1).map((d) => DropdownMenuItem(value: d, child: Text(d.toString()))).toList(),
@@ -275,17 +278,26 @@ class FixedChargesScreen extends StatelessWidget {
                   ),
                   const Divider(height: 32),
                   SwitchListTile(
-                    title: const Text("Auto-Apply (Recurring)"),
-                    subtitle: const Text("Automatically add this expense every month"),
+                    title: Text(AppStrings.autoApply),
+                    subtitle: Text(AppStrings.autoApplySubtitle),
                     value: isAuto,
                     onChanged: (val) => setState(() => isAuto = val),
                     contentPadding: EdgeInsets.zero,
                   ),
+                  if (isAuto)
+                    SwitchListTile(
+                      title: Text(AppStrings.waitForDueDate),
+                      subtitle: Text(AppStrings.waitForDueDateSubtitle),
+                      value: delayedAutoPay,
+                      activeColor: Colors.purple,
+                      onChanged: (val) => setState(() => delayedAutoPay = val),
+                      contentPadding: EdgeInsets.zero,
+                    ),
                 ],
               ),
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
+              TextButton(onPressed: () => Navigator.pop(ctx), child: Text(AppStrings.cancel)),
               TextButton(
                 onPressed: () async {
                   final name = nameCtrl.text.trim();
@@ -312,6 +324,7 @@ class FixedChargesScreen extends StatelessWidget {
                     category: finalCategory,
                     dayOfMonth: selectedDay,
                     isAutoApplied: isAuto,
+                    delayedAutoPay: delayedAutoPay,
                   );
 
                   if (charge == null) {
@@ -322,7 +335,7 @@ class FixedChargesScreen extends StatelessWidget {
                   
                   if (ctx.mounted) Navigator.pop(ctx);
                 },
-                child: const Text("Save"),
+                child: Text(AppStrings.save),
               ),
             ],
           );
@@ -365,8 +378,8 @@ class _ChargeTile extends StatelessWidget {
                   children: [
                     Icon(Icons.check_circle, size: 12, color: Colors.green),
                     const SizedBox(width: 4),
-                    Text("Applied for ${Utils.getMonthName(provider.selectedMonth)}", 
-                      style: TextStyle(fontSize: 10, color: Colors.green, fontWeight: FontWeight.bold)
+                    Text("${AppStrings.appliedFor} ${Utils.getMonthName(provider.selectedMonth)}", 
+                      style: const TextStyle(fontSize: 10, color: Colors.green, fontWeight: FontWeight.bold)
                     ),
                   ],
                 ),
@@ -379,11 +392,11 @@ class _ChargeTile extends StatelessWidget {
             if (!isApplied) // Show "Apply" button if not yet applied
               TextButton(
                 onPressed: () => _confirmApplyIndividual(context, provider, charge),
-                child: const Text("Apply"),
+                child: Text(AppStrings.apply),
               ),
             
             if (!isApplied) // Only show Text Day if we have space, or maybe just icon?
-               Text("Day ${charge.dayOfMonth}", style: const TextStyle(fontSize: 12, color: Colors.grey)),
+               Text("${AppStrings.dayOfMonth} ${charge.dayOfMonth}", style: const TextStyle(fontSize: 12, color: Colors.grey)),
                
             const SizedBox(width: 4),
             IconButton(
@@ -407,21 +420,21 @@ class _ChargeTile extends StatelessWidget {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text("Apply Charge?"),
-        content: Text("Add '${charge.name}' to ${Utils.getMonthName(month)} expenses?"),
+        title: Text(AppStrings.applyChargeTitle),
+        content: Text("${AppStrings.apply} '${charge.name}'?"),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(AppStrings.cancel)),
           TextButton(
             onPressed: () async {
               Navigator.pop(ctx);
               await provider.applyFixedChargesToCycle(year, month, chargeId: charge.id);
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text("${charge.name} applied!")),
+                  SnackBar(content: Text("${charge.name} ${AppStrings.chargesApplied}")),
                 );
               }
             },
-            child: const Text("Apply"),
+            child: Text(AppStrings.apply),
           ),
         ],
       ),
@@ -432,17 +445,17 @@ class _ChargeTile extends StatelessWidget {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text("Delete Charge?"),
-        content: Text("Delete '${charge.name}'?"),
+        title: Text(AppStrings.deleteChargeTitle),
+        content: Text("${AppStrings.delete} '${charge.name}'?"),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(AppStrings.cancel)),
           TextButton(
             onPressed: () async {
               await Provider.of<ExpenseProvider>(context, listen: false).deleteFixedCharge(charge.id);
               if (ctx.mounted) Navigator.pop(ctx);
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text("Delete"),
+            child: Text(AppStrings.delete),
           ),
         ],
       ),

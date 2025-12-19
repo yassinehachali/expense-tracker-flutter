@@ -28,17 +28,66 @@ class _CategoryScreenState extends State<CategoryScreen> {
   
   String _selectedIcon = 'Home';
   Color _selectedColor = AppColors.palette[0];
-  
+  bool _hasManuallySelectedIcon = false;
+
+  final ScrollController _iconScrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController.addListener(_onNameChanged);
+  }
+
+  @override
+  void dispose() {
+    _nameController.removeListener(_onNameChanged);
+    _iconScrollController.dispose();
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  void _onNameChanged() {
+    if (_hasManuallySelectedIcon) return; // Don't override user choice
+
+    final text = _nameController.text;
+    final suggestion = Utils.suggestIconKey(text);
+    
+    if (suggestion != null && suggestion != _selectedIcon) {
+      setState(() {
+        _selectedIcon = suggestion;
+      });
+      _scrollToIcon(suggestion);
+    }
+  }
+
+  void _scrollToIcon(String iconKey) {
+    if (!_iconScrollController.hasClients) return;
+    
+    final index = _availableIcons.indexOf(iconKey);
+    if (index != -1) {
+       // Calculation: Item Width (50) + Separator Width (12)
+       // We center it slightly by subtracting a bit of screen width padding if possible, 
+       // but complex centering requires knowing viewport width. 
+       // Simple scroll to item position is usually sufficient.
+       final offset = index * (50.0 + 12.0);
+       _iconScrollController.animateTo(
+         offset, 
+         duration: const Duration(milliseconds: 300), 
+         curve: Curves.easeInOut
+       );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final theme = Theme.of(context);
     final uid = auth.user?.uid;
 
-    if (uid == null) return const Scaffold(body: Center(child: Text(AppStrings.pleaseLogin)));
+    if (uid == null) return Scaffold(body: Center(child: Text(AppStrings.pleaseLogin)));
 
     return Scaffold(
-      appBar: AppBar(title: const Text(AppStrings.manageCategories)),
+      appBar: AppBar(title: Text(AppStrings.manageCategories)),
       body: StreamBuilder<List<CategoryModel>>(
         stream: _firestoreService.getCategoriesStream(uid),
         builder: (context, snapshot) {
@@ -57,7 +106,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
                    child: Column(
                      crossAxisAlignment: CrossAxisAlignment.start,
                      children: [
-                       const Text(AppStrings.addNewCategory, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                       Text(AppStrings.addNewCategory, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                        const SizedBox(height: 16),
                        TextField(
                          controller: _nameController,
@@ -72,7 +121,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
                        const SizedBox(height: 16),
                        
                        // Color Picker
-                       const Text(AppStrings.selectColor, style: TextStyle(fontSize: 12, color: Colors.grey)),
+                       Text(AppStrings.selectColor, style: const TextStyle(fontSize: 12, color: Colors.grey)),
                        const SizedBox(height: 8),
                        SizedBox(
                          height: 50,
@@ -108,11 +157,12 @@ class _CategoryScreenState extends State<CategoryScreen> {
                        ),
                        const SizedBox(height: 16),
 
-                       const Text(AppStrings.selectIcon, style: TextStyle(fontSize: 12, color: Colors.grey)),
+                       Text(AppStrings.selectIcon, style: const TextStyle(fontSize: 12, color: Colors.grey)),
                        const SizedBox(height: 8),
                        SizedBox(
                          height: 50,
                          child: ListView.separated(
+                           controller: _iconScrollController,
                            scrollDirection: Axis.horizontal,
                            itemCount: _availableIcons.length,
                            separatorBuilder: (_, __) => const SizedBox(width: 12),
@@ -120,7 +170,10 @@ class _CategoryScreenState extends State<CategoryScreen> {
                              final iconKey = _availableIcons[index];
                              final isSelected = _selectedIcon == iconKey;
                              return GestureDetector(
-                               onTap: () => setState(() => _selectedIcon = iconKey),
+                               onTap: () => setState(() {
+                                 _selectedIcon = iconKey;
+                                 _hasManuallySelectedIcon = true;
+                               }),
                                child: AnimatedContainer(
                                  duration: const Duration(milliseconds: 200),
                                  width: 50,
@@ -172,7 +225,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                              padding: const EdgeInsets.symmetric(vertical: 16),
                            ),
-                           child: const Text(AppStrings.createCategory),
+                           child: Text(AppStrings.createCategory),
                          ),
                        )
                      ],
@@ -180,11 +233,11 @@ class _CategoryScreenState extends State<CategoryScreen> {
                 ),
                 
                 const SizedBox(height: 32),
-                const Text(AppStrings.myCategories, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                Text(AppStrings.myCategories, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                 const SizedBox(height: 16),
                 
                 if (customCategories.isEmpty)
-                   const Padding(padding: EdgeInsets.all(16), child: Text(AppStrings.noCustomCategories)),
+                   Padding(padding: const EdgeInsets.all(16), child: Text(AppStrings.noCustomCategories)),
 
                 ListView.separated(
                   physics: const NeverScrollableScrollPhysics(),

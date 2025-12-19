@@ -75,6 +75,21 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _handleGoogleLogin() async {
+    setState(() {
+       _isLoading = true;
+       _error = null;
+    });
+    try {
+      await Provider.of<AuthProvider>(context, listen: false).signInWithGoogle();
+      // Auth wrapper handles navigation
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString().replaceAll("Exception: ", ""));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -257,6 +272,33 @@ class _LoginScreenState extends State<LoginScreen> {
                              ),
                            ),
                            
+                           const SizedBox(height: 16),
+                           
+                           SizedBox(
+                             width: double.infinity,
+                             height: 56,
+                             child: ElevatedButton.icon(
+                               onPressed: _isLoading ? null : _handleGoogleLogin,
+                               style: ElevatedButton.styleFrom(
+                                 backgroundColor: Colors.white,
+                                 foregroundColor: Colors.black54,
+                                 elevation: 2,
+                                 side: const BorderSide(color: Color(0xFFDADCE0)), // Standard Google Grey Border
+                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)), // Standard Capsule shape
+                                 padding: EdgeInsets.zero,
+                               ),
+                               icon: const Icon(LucideIcons.chrome, size: 20, color: Colors.black87),
+                               label: Text(
+                                 "Sign in with Google",
+                                 style: GoogleFonts.roboto( // Standard Google Font
+                                   fontSize: 16,
+                                   color: Colors.black87,
+                                   fontWeight: FontWeight.w600,
+                                 ),
+                               ),
+                             ),
+                           ),
+
                            const SizedBox(height: 20),
                            
                            // Toggle Login/Signup
