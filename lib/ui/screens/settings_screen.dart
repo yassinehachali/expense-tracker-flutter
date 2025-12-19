@@ -9,6 +9,7 @@ import '../../data/services/update_service.dart';
 import 'category_screen.dart';
 import '../../core/utils.dart';
 import '../../core/app_strings.dart'; // Add import
+import 'package:intl/intl.dart';
 
 import '../../core/global_events.dart';
 import 'loans_manager_screen.dart';
@@ -72,6 +73,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _showSalaryDialog(context, expenseProvider);
               },
             ),
+
+            ListTile(
+              leading: const Icon(LucideIcons.history, color: Colors.green),
+              title: Text(AppStrings.rolloverHistory ?? "Rollover History"),
+              subtitle: Text(AppStrings.manageRollovers ?? "Manage monthly carry-overs"),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                _showRolloverManagementDialog(context, expenseProvider);
+              },
+            ),
+
             
             ListTile(
               leading: const Icon(LucideIcons.list),
@@ -152,6 +164,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                  _showResetDialog(context, expenseProvider);
               },
             ),
+
+
             
              ListTile(
               leading: const Icon(LucideIcons.logOut),
@@ -365,6 +379,91 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  void _showRolloverManagementDialog(BuildContext context, ExpenseProvider _) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Consumer<ExpenseProvider>(
+        builder: (context, provider, child) {
+          final accepted = provider.settings.acceptedRollovers;
+          final ignored = provider.settings.ignoredRollovers;
+          
+          // Filter for CURRENT view only (User Request: "just the history of the month before")
+          final targetKey = "${provider.selectedYear}-${provider.selectedMonth + 1}";
+          
+          final allKeys = {...accepted, ...ignored}
+              .where((k) => k == targetKey)
+              .toList();
+
+          return AlertDialog(
+            title: Text(AppStrings.rolloverHistory),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: allKeys.isEmpty 
+              ? Center(child: Text(AppStrings.noHistory))
+              : ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: allKeys.length,
+                  separatorBuilder: (_, __) => const Divider(),
+                  itemBuilder: (ctx, index) {
+                    final key = allKeys[index];
+                    final isAccepted = accepted.contains(key);
+                    final date = _parseKey(key);
+                    
+                    final displayDate = DateFormat('MMMM yyyy', AppStrings.language).format(date);
+                    
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(
+                        isAccepted ? LucideIcons.checkCircle : LucideIcons.xCircle,
+                        color: isAccepted ? Colors.green : Colors.grey,
+                      ),
+                      title: Text(displayDate),
+                      subtitle: Text(
+                        isAccepted 
+                        ? (AppStrings.statusApplied) 
+                        : (AppStrings.statusIgnored),
+                        style: TextStyle(
+                          color: isAccepted ? Colors.green : Colors.grey,
+                          fontSize: 12
+                        ),
+                      ),
+                      trailing: TextButton(
+                        onPressed: () {
+                          final parts = key.split('-');
+                          final y = int.parse(parts[0]);
+                          final m = int.parse(parts[1]) - 1; // back to 0-indexed
+                          
+                          if (isAccepted) {
+                             // Switch to Ignored
+                             provider.ignoreRollover(y, m);
+                          } else {
+                             // Switch to Accepted
+                             provider.acceptRollover(y, m);
+                          }
+                          // No manual refresh needed, Consumer handles it
+                        },
+                        child: Text(isAccepted ? (AppStrings.disable) : (AppStrings.enable)),
+                      ),
+                    );
+                  },
+                ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: Text(AppStrings.close)),
+            ],
+          );
+        }
+      ),
+    );
+  }
+
+  DateTime _parseKey(String key) {
+    final parts = key.split('-');
+    return DateTime(int.parse(parts[0]), int.parse(parts[1]));
+  }
+
+
+
   void _showChangePasswordDialog(BuildContext context, AuthProvider auth) {
     final currentPassController = TextEditingController();
     final newPassController = TextEditingController();
@@ -496,6 +595,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
+
+
 
   Future<void> _checkForUpdates(BuildContext context) async {
     // Show loading dialog

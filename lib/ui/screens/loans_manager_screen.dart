@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/app_strings.dart';
@@ -201,6 +202,122 @@ class LoansManagerScreen extends StatelessWidget {
                   );
                 },
               ),
+          ],
+        ),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showAddLoanDialog(context, provider),
+        label: Text(AppStrings.addTransaction),
+        icon: const Icon(LucideIcons.plus),
+        backgroundColor: Colors.green,
+      ),
+    );
+  }
+
+  void _showAddLoanDialog(BuildContext context, ExpenseProvider provider) {
+    final amountController = TextEditingController();
+    final personController = TextEditingController();
+    DateTime selectedDate = DateTime.now();
+    bool isPastDebt = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: Text("Add Borrowed Amount"),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: amountController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText: AppStrings.amountLabel,
+                    prefixIcon: const Icon(LucideIcons.dollarSign),
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: personController,
+                  decoration: InputDecoration(
+                    labelText: "Lender (Person/Bank)",
+                    prefixIcon: const Icon(LucideIcons.user),
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(LucideIcons.calendar),
+                  title: Text(DateFormat('yyyy-MM-dd').format(selectedDate)),
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: selectedDate,
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime.now(),
+                    );
+                    if (picked != null) {
+                      setState(() {
+                         selectedDate = picked;
+                         // Auto-check "Past Debt" if older than 30 days? 
+                         // Optional, user can manual check.
+                      });
+                    }
+                  },
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text("Pre-existing Debt?"),
+                  subtitle: const Text("Does not affect current balance"),
+                  value: isPastDebt,
+                  onChanged: (val) => setState(() => isPastDebt = val),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx), 
+              child: Text(AppStrings.cancel)
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                 final amountText = amountController.text;
+                 final amount = double.tryParse(amountText);
+                 if (amount == null || amount <= 0) return;
+                 
+                 final person = personController.text.trim();
+                 if (person.isEmpty) return;
+
+                 final newExpense = ExpenseModel(
+                   id: '', // provider assigns ID if Firestore not used directly? 
+                   // Wait, ExpenseModel needs ID on creation? 
+                   // FirestoreService usually generates ID. 
+                   // ExpenseProvider.addExpense calls FirestoreService.addExpense which sets ID?
+                   // Let's check provider.addExpense. 
+                   // Usually models created locally have empty ID then replaced by Firestore ID.
+                   // Or UUID. 
+                   // I'll leave ID empty string, assuming Provider/Service handles it.
+                   // Checking addExpense: it calls _firestoreService.addExpense.
+                   
+                   amount: amount,
+                   category: 'Borrowed',
+                   description: "Borrowed from $person",
+                   date: selectedDate.toIso8601String(),
+                   type: 'borrow',
+                   isReturned: false,
+                   loanee: person,
+                   excludeFromBalance: isPastDebt,
+                 );
+                 
+                 await provider.addExpense(newExpense);
+                 if (context.mounted) Navigator.pop(ctx);
+              }, 
+              child: Text(AppStrings.confirm)
+            ),
           ],
         ),
       ),

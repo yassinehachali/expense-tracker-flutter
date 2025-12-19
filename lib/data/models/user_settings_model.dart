@@ -34,6 +34,7 @@ class UserSettingsModel {
   final int defaultStartDay;
   final Map<String, MonthlySettings> monthlyOverrides; // Key: "yyyy-MM"
   final List<String> ignoredRollovers; // Key: "yyyy-MM" where rollover is disabled
+  final List<String> acceptedRollovers; // Key: "yyyy-MM" where rollover is explicitly accepted
   final String language;
 
   UserSettingsModel({
@@ -41,6 +42,7 @@ class UserSettingsModel {
     this.defaultStartDay = 1,
     this.monthlyOverrides = const {},
     this.ignoredRollovers = const [],
+    this.acceptedRollovers = const [],
     this.language = 'en',
   });
 
@@ -57,11 +59,17 @@ class UserSettingsModel {
       ignored.addAll(List<String>.from(map['ignoredRollovers']));
     }
 
+    final accepted = <String>[];
+    if (map['acceptedRollovers'] != null) {
+      accepted.addAll(List<String>.from(map['acceptedRollovers']));
+    }
+
     return UserSettingsModel(
       defaultSalary: (map['defaultSalary'] ?? map['salary'] ?? 0).toDouble(), // fallback for migration
       defaultStartDay: map['defaultStartDay'] ?? map['salaryDate'] ?? 1,
       monthlyOverrides: overrides,
       ignoredRollovers: ignored,
+      acceptedRollovers: accepted,
       language: map['language'] ?? 'en',
     );
   }
@@ -73,6 +81,7 @@ class UserSettingsModel {
        'defaultStartDay': defaultStartDay,
        'monthlyOverrides': monthlyOverrides.map((k, v) => MapEntry(k, v.toMap())),
        'ignoredRollovers': ignoredRollovers,
+       'acceptedRollovers': acceptedRollovers,
        'language': language,
      };
   }

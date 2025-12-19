@@ -148,12 +148,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                     onTap: () => setState(() => _selectedType = 'loan')
                   ),
                   _TypeTab(
-                    label: AppStrings.borrow, 
-                    icon: LucideIcons.coins, 
-                    isSelected: _selectedType == 'borrow', 
-                    onTap: () => setState(() => _selectedType = 'borrow')
-                  ),
-                  _TypeTab(
                     label: AppStrings.filterIncome, 
                     icon: LucideIcons.wallet, 
                     isSelected: _selectedType == 'income', 

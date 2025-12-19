@@ -14,6 +14,7 @@ class ExpenseModel {
   final double returnedAmount;
   final String? loanee;
   final String? originChargeId; // ID of the FixedCharge this originated from
+  final bool excludeFromBalance;
 
   final DateTime? createdAt; // Can be null locally before sync
 
@@ -29,6 +30,7 @@ class ExpenseModel {
     this.loanee,
     this.originChargeId,
     this.createdAt,
+    this.excludeFromBalance = false,
   });
 
   Map<String, dynamic> toMap() {
@@ -43,6 +45,7 @@ class ExpenseModel {
       if (loanee != null) 'loanee': loanee,
       if (originChargeId != null) 'originChargeId': originChargeId,
       if (createdAt != null) 'createdAt': Timestamp.fromDate(createdAt!),
+      'excludeFromBalance': excludeFromBalance,
       // Note: We don't save 'id' as a field, it's the doc key
     };
   }
@@ -70,6 +73,7 @@ class ExpenseModel {
       loanee: data['loanee'],
       originChargeId: data['originChargeId'],
       createdAt: createdDate,
+      excludeFromBalance: data['excludeFromBalance'] ?? false,
     );
   }
 
@@ -92,6 +96,7 @@ class ExpenseModel {
       loanee: loanee,
       originChargeId: originChargeId,
       createdAt: createdAt,
+      excludeFromBalance: excludeFromBalance,
     );
   }
 }

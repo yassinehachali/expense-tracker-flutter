@@ -245,8 +245,20 @@ class AppStrings {
   static String get fixedChargesDesc => _t('fixedChargesDesc');
   static String get manageDebtsDesc => _t('manageDebtsDesc');
   static String get healthInsuranceDesc => _t('healthInsuranceDesc');
-  static String get versionPrefix => _t('versionPrefix');
+  static String get rolloverHistory => _t('rolloverHistory');
+  static String get manageRollovers => _t('manageRollovers');
+  static String get statusApplied => _t('statusApplied');
+  static String get statusIgnored => _t('statusIgnored');
+  static String get enable => _t('enable');
+  static String get disable => _t('disable');
+  static String get noHistory => _t('noHistory');
+  static String get rolloverAvailable => _t('rolloverAvailable');
+  static String get rolloverMessage => _t('rolloverMessage');
+  static String get applyRolloverConfirm => _t('applyRolloverConfirm');
+  static String get yesApply => _t('yesApply');
+  static String get no => _t('no');
   static String get close => _t('close');
+  static String get versionPrefix => _t('versionPrefix');
   static String get updatingTitle => _t('updatingTitle');
   static String get noDebtsMessage => _t('noDebtsMessage');
   static String get unknownLender => _t('unknownLender');
@@ -456,10 +468,21 @@ class AppStrings {
     'refundDatePrefix': 'Refund Date: ',
     'confirmRefundBtn': 'Confirm Refund',
     'fixedChargesDesc': 'Manage recurring expenses',
-    'manageDebtsDesc': 'Manage borrowed debts',
-    'healthInsuranceDesc': 'Track claims and refunds',
+    'manageDebtsDesc': 'Manage loans and debts',
+    'healthInsuranceDesc': 'Track claims & refunds',
+    'rolloverHistory': 'Rollover History',
+    'manageRollovers': 'Manage monthly carry-overs',
+    'statusApplied': 'Applied',
+    'statusIgnored': 'Ignored',
+    'enable': 'Enable',
+    'disable': 'Disable',
+    'noHistory': 'No history found',
+    'rolloverAvailable': 'Rollover Available',
+    'rolloverMessage': 'You have a remaining balance from the last month.',
+    'applyRolloverConfirm': 'Do you want to apply this balance?',
+    'yesApply': 'Yes, Apply',
+    'no': 'No',
     'versionPrefix': 'Version: ',
-    'close': 'Close',
     'updatingTitle': 'Updating...',
     'noDebtsMessage': 'You have no debts!',
     'unknownLender': 'Unknown Lender',
@@ -651,10 +674,21 @@ class AppStrings {
     'refundDatePrefix': 'Date de Remboursement: ',
     'confirmRefundBtn': 'Confirmer le Remboursement',
     'fixedChargesDesc': 'Gérer les dépenses récurrentes',
-    'manageDebtsDesc': 'Gérer les dettes',
-    'healthInsuranceDesc': 'Suivi des réclamations et remboursements',
+    'manageDebtsDesc': 'Gérer les prêts et dettes',
+    'healthInsuranceDesc': 'Suivre les réclamations et remboursements',
+    'rolloverHistory': 'Historique de Report',
+    'manageRollovers': 'Gérer les reports mensuels',
+    'statusApplied': 'Appliqué',
+    'statusIgnored': 'Ignoré',
+    'enable': 'Activer',
+    'disable': 'Désactiver',
+    'noHistory': 'Aucun historique',
+    'rolloverAvailable': 'Report Disponible',
+    'rolloverMessage': 'Vous avez un solde restant du mois dernier.',
+    'applyRolloverConfirm': 'Voulez-vous appliquer ce solde ?',
+    'yesApply': 'Oui, Appliquer',
+    'no': 'Non',
     'versionPrefix': 'Version: ',
-    'close': 'Fermer',
     'updatingTitle': 'Mise à jour...',
     'noDebtsMessage': "Vous n'avez aucune dette!",
     'unknownLender': 'Prêteur Inconnu',
@@ -848,8 +882,20 @@ class AppStrings {
     'fixedChargesDesc': 'إدارة المصروفات المتكررة',
     'manageDebtsDesc': 'إدارة الديون',
     'healthInsuranceDesc': 'تتبع المطالبات والاسترداد',
-    'versionPrefix': 'الإصدار: ',
+    'rolloverHistory': 'سجل ترحيل الرصيد',
+    'manageRollovers': 'إدارة الرصيد المرحل',
+    'statusApplied': 'مطبق',
+    'statusIgnored': 'مرفوض',
+    'enable': 'تفعيل',
+    'disable': 'تعطيل',
+    'noHistory': 'لا يوجد سجل',
+    'rolloverAvailable': 'رصيد مرحل متاح',
+    'rolloverMessage': 'لديك رصيد متبقي من الشهر الماضي.',
+    'applyRolloverConfirm': 'هل تريد تطبيق هذا الرصيد؟',
+    'yesApply': 'نعم، تطبيق',
+    'no': 'لا',
     'close': 'إغلاق',
+    'versionPrefix': 'الإصدار: ',
     'updatingTitle': 'جاري التحديث...',
     'noDebtsMessage': 'ليس لديك ديون!',
     'unknownLender': 'مقرض غير معروف',

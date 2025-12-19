@@ -115,7 +115,6 @@ class NotificationService {
     // zonedSchedule is not supported on Web and causes compilation errors due to missing symbols.
     // Temporarily disabled for Web compatibility.
     print("Daily reminder scheduling is not supported on this platform.");
-    /*
     await flutterLocalNotificationsPlugin.zonedSchedule(
         1, // Reminder ID
         AppStrings.dailyReminderTitle,
@@ -134,7 +133,6 @@ class NotificationService {
         uiLocalNotificationDateInterpretation:
             fln.UILocalNotificationDateInterpretation.absoluteTime,
         matchDateTimeComponents: fln.DateTimeComponents.time);
-    */
   }
 
   tz.TZDateTime _nextInstanceOfTime(int hour, int minute) {

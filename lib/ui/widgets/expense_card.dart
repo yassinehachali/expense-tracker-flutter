@@ -36,7 +36,7 @@ class ExpenseCard extends StatelessWidget {
     final bool isReturnedLoan = isLoan && expense.isReturned;
     
     if (isRollover) {
-      iconKey = 'History'; 
+      iconKey = 'Wallet';  
       catColor = Colors.green; 
     } else if (isBorrow) {
       iconKey = 'Coins';
@@ -172,10 +172,10 @@ class ExpenseCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  '${(isIncome || isBorrow) ? '+' : '-'} ${Utils.formatCurrency(expense.amount)}',
+                  '${(isIncome || isBorrow || isRollover) ? '+' : '-'} ${Utils.formatCurrency(expense.amount)}',
                   style: theme.textTheme.bodyLarge?.copyWith(
                     fontWeight: FontWeight.bold,
-                    color: (isIncome || isReturnedLoan || isBorrow) ? Colors.green : Colors.red,
+                    color: (isIncome || isReturnedLoan || isBorrow || isRollover) ? Colors.green : Colors.red,
                     decoration: isReturnedLoan ? TextDecoration.lineThrough : null,
                     decorationThickness: 2.0,
                   ),

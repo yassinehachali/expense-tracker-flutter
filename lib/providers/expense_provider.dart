@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import '../data/models/expense_model.dart';
 import '../data/models/category_model.dart';
@@ -11,6 +12,9 @@ import '../core/utils.dart';
 import '../core/app_strings.dart';
 
 class ExpenseProvider with ChangeNotifier {
+  ExpenseProvider() {
+    _loadLastViewed();
+  }
   final FirestoreService _firestoreService = FirestoreService();
   String? userId;
 
@@ -175,14 +179,36 @@ class ExpenseProvider with ChangeNotifier {
 
   void setMonth(int month) {
     _selectedMonth = month;
+    _saveLastViewed();
     notifyListeners();
     _checkAndApplyAutoCharges(); // Check whenever cycle changes
   }
 
   void setYear(int year) {
     _selectedYear = year;
+    _saveLastViewed();
     notifyListeners();
     _checkAndApplyAutoCharges(); // Check whenever cycle changes
+  }
+
+  Future<void> _loadLastViewed() async {
+    final prefs = await SharedPreferences.getInstance();
+    bool changed = false;
+    if (prefs.containsKey('last_view_year')) {
+      _selectedYear = prefs.getInt('last_view_year')!;
+      changed = true;
+    }
+    if (prefs.containsKey('last_view_month')) {
+      _selectedMonth = prefs.getInt('last_view_month')!;
+      changed = true;
+    }
+    if (changed) notifyListeners();
+  }
+
+  Future<void> _saveLastViewed() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('last_view_year', _selectedYear);
+    await prefs.setInt('last_view_month', _selectedMonth);
   }
 
   void setFilterType(String type) {
@@ -191,7 +217,9 @@ class ExpenseProvider with ChangeNotifier {
   }
 
   List<ExpenseModel> get filteredExpenses {
-    List<ExpenseModel> result = _expenses.filter((exp) {
+    List<ExpenseModel> result = _expenses.where((exp) {
+      if (exp.excludeFromBalance) return false; // Hide past debts from main lists
+      
       final d = DateTime.parse(exp.date);
       final inCycle = isInCurrentCycle(d);
 
@@ -261,6 +289,50 @@ class ExpenseProvider with ChangeNotifier {
 
   // --- Rollover Logic ---
   
+  double _calculateMonthlyBalance(int year, int month, {int depth = 0}) {
+    if (depth > 24) return 0.0; // Infinite loop safety
+
+    final settings = _getEffectiveSettings(year, month);
+    final start = getCycleStartDate(year, month);
+    
+    // Determine end of this cycle (Start of next cycle - 1 sec)
+    var nextM = month + 1;
+    var nextY = year;
+    if (nextM > 11) { nextM = 0; nextY++; }
+    final end = getCycleStartDate(nextY, nextM).subtract(const Duration(seconds: 1));
+
+    final monthlyExpenses = _expenses.where((exp) {
+       final d = DateTime.parse(exp.date);
+       // Check range
+       return (d.isAfter(start) || d.isAtSameMomentAs(start)) && 
+              (d.isBefore(end) || d.isAtSameMomentAs(end));
+    });
+
+    double income = settings.salary;
+    double spent = 0;
+    
+    for (var e in monthlyExpenses) {
+       if (e.excludeFromBalance) continue; // Skip if excluded
+       if (e.type == 'income') income += e.amount;
+       else if (e.type == 'rollover') {} // Skip virtual if present
+       else spent += e.amount;
+    }
+
+    // Check if THIS month accepted a rollover from previous
+    final key = "$year-${month + 1}";
+    if (_settings.acceptedRollovers.contains(key)) {
+        var prevM = month - 1;
+        var prevY = year;
+        if (prevM < 0) { prevM = 11; prevY--; }
+        
+        // Add previous balance to income recursion
+        income += _calculateMonthlyBalance(prevY, prevM, depth: depth + 1);
+    }
+
+    final balance = income - spent;
+    return balance > 0 ? balance : 0.0;
+  }
+
   double get _currentRolloverAmount {
     int prevMonth = _selectedMonth - 1;
     int prevYear = _selectedYear;
@@ -269,39 +341,14 @@ class ExpenseProvider with ChangeNotifier {
       prevYear--;
     }
     
-    // Check if user has deleted/ignored this specific rollover
     final currentKey = "$_selectedYear-${_selectedMonth + 1}";
-    // print("DEBUG: Rollover Check Key: $currentKey, Ignored List: ${_settings.ignoredRollovers}");
-    if (_settings.ignoredRollovers.contains(currentKey)) {
-      // print("DEBUG: Rollover IGNORED for $currentKey");
-      return 0.0;
-    }
-
-    // 2. Get Settings & Range for Prev Month
-    final settings = _getEffectiveSettings(prevYear, prevMonth);
-    final start = getCycleStartDate(prevYear, prevMonth);
-    // End of prev cycle is one day before start of current cycle
-    final end = currentCycleStart.subtract(const Duration(days: 1)); // or Duration(seconds: 1) if we want exact check, but day comparison is safer
-
-    // 3. Filter Expenses for Prev Month
-    final prevExpenses = _expenses.where((exp) {
-       final d = DateTime.parse(exp.date);
-       final target = DateTime(d.year, d.month, d.day);
-       return (target.isAfter(start) || target.isAtSameMomentAs(start)) && 
-              (target.isBefore(end) || target.isAtSameMomentAs(end));
-    });
-
-    // 4. Calculate Balance
-    double income = 0;
-    double spent = 0;
-    for (var e in prevExpenses) {
-       if (e.type == 'income') income += e.amount;
-       else if (e.type == 'loan') spent += e.amount; 
-       else spent += e.amount;
+    
+    // If NOT accepted, we show NOTHING (0.0).
+    if (!_settings.acceptedRollovers.contains(currentKey)) {
+       return 0.0;
     }
     
-    final balance = (settings.salary + income) - spent;
-    return balance > 0 ? balance : 0.0;
+    return _calculateMonthlyBalance(prevYear, prevMonth);
   }
 
   Map<String, double> get dashboardStats {
@@ -314,6 +361,8 @@ class ExpenseProvider with ChangeNotifier {
     double totalBorrowed = 0;
 
     for (var curr in cycleExpenses) {
+       if (curr.excludeFromBalance) continue; // Skip excluded transactions (e.g. past debts) from Current Balance stats
+
        if (curr.type == 'income') {
          totalIncome += curr.amount;
        } else if (curr.type == 'loan') {
@@ -826,22 +875,80 @@ class ExpenseProvider with ChangeNotifier {
     
     // Optimistic update
     final newIgnored = List<String>.from(_settings.ignoredRollovers);
+    
+    // Remove from accepted if present
+    final newAccepted = List<String>.from(_settings.acceptedRollovers);
+    newAccepted.remove(key);
+
     if (!newIgnored.contains(key)) {
       newIgnored.add(key);
+    }
       
+    _settings = UserSettingsModel(
+       defaultSalary: _settings.defaultSalary,
+       defaultStartDay: _settings.defaultStartDay,
+       monthlyOverrides: _settings.monthlyOverrides,
+       ignoredRollovers: newIgnored,
+       acceptedRollovers: newAccepted,
+       language: _settings.language,
+    );
+    notifyListeners();
+      
+    // Persist
+    await _firestoreService.updateSettings(userId!, {
+      'ignoredRollovers': newIgnored,
+      'acceptedRollovers': newAccepted,
+    });
+  }
+
+  Future<void> acceptRollover(int year, int month) async {
+    if (userId == null) return;
+    final key = "$year-${month + 1}";
+    
+    final newAccepted = List<String>.from(_settings.acceptedRollovers);
+    if (!newAccepted.contains(key)) {
+      newAccepted.add(key);
+      
+      // Ensure it's not in ignored
+      final newIgnored = List<String>.from(_settings.ignoredRollovers);
+      newIgnored.remove(key);
+
       _settings = UserSettingsModel(
          defaultSalary: _settings.defaultSalary,
          defaultStartDay: _settings.defaultStartDay,
          monthlyOverrides: _settings.monthlyOverrides,
          ignoredRollovers: newIgnored,
+         acceptedRollovers: newAccepted,
+         language: _settings.language,
       );
       notifyListeners();
       
-      // Persist
       await _firestoreService.updateSettings(userId!, {
-        'ignoredRollovers': newIgnored
+        'ignoredRollovers': newIgnored,
+        'acceptedRollovers': newAccepted,
       });
     }
+  }
+
+  /// Calculates potential rollover for the current selected month WITHOUT filtering by accepted/ignored status.
+  /// Used to determine if we should prompt the user.
+  double get pendingRolloverAmount {
+    int prevMonth = _selectedMonth - 1;
+    int prevYear = _selectedYear;
+    if (prevMonth < 0) {
+      prevMonth = 11;
+      prevYear--;
+    }
+    
+    final key = "$_selectedYear-${_selectedMonth + 1}";
+    
+    // If already accepted or ignored, it is NOT pending.
+    if (_settings.acceptedRollovers.contains(key) || _settings.ignoredRollovers.contains(key)) {
+      return 0.0;
+    }
+
+    // Calculate recursive balance of previous month
+    return _calculateMonthlyBalance(prevYear, prevMonth);
   }
 
   Future<void> resetData() async {
@@ -978,6 +1085,8 @@ class ExpenseProvider with ChangeNotifier {
     if (userId == null) return;
     await _firestoreService.deleteInsuranceClaim(userId!, claimId);
   }
+
+
 }
 
 extension ListFilter<T> on List<T> {

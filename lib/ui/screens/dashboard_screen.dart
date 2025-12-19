@@ -29,10 +29,27 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   bool _isPieChart = true;
+  int? _checkedYear;
+  int? _checkedMonth;
 
   @override
   Widget build(BuildContext context) {
     final provider = Provider.of<ExpenseProvider>(context);
+    
+    // Auto-prompt for Rollover
+    // We check if we are on a new view (year/month changed) or haven't checked yet
+    if (!provider.isLoading && (_checkedYear != provider.selectedYear || _checkedMonth != provider.selectedMonth)) {
+      _checkedYear = provider.selectedYear;
+      _checkedMonth = provider.selectedMonth;
+      
+      // Delay to allow UI to render first
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+         if (provider.pendingRolloverAmount > 0) {
+            _showRolloverDialog(context, provider);
+         }
+      });
+    }
+
     final stats = provider.dashboardStats;
     final chartData = provider.chartData;
     final theme = Theme.of(context);
@@ -674,6 +691,60 @@ class _ChartToggle extends StatelessWidget {
       ),
     );
   }
+}
+
+void _showRolloverDialog(BuildContext context, ExpenseProvider provider) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), shape: BoxShape.circle),
+              child: const Icon(LucideIcons.wallet, color: Colors.green),
+            ),
+            const SizedBox(width: 12),
+            Flexible(child: Text(AppStrings.rolloverAvailable)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(AppStrings.rolloverMessage),
+            const SizedBox(height: 12),
+            Center(
+              child: Text(
+                Utils.formatCurrency(provider.pendingRolloverAmount),
+                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.green),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(AppStrings.applyRolloverConfirm),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              provider.ignoreRollover(provider.selectedYear, provider.selectedMonth);
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.grey),
+            child: Text(AppStrings.no ?? "No"),
+          ),
+          FilledButton.icon(
+            onPressed: () {
+              Navigator.pop(ctx);
+              provider.acceptRollover(provider.selectedYear, provider.selectedMonth);
+            },
+            icon: const Icon(Icons.check, size: 16),
+            label: Text(AppStrings.yesApply),
+            style: FilledButton.styleFrom(backgroundColor: Colors.green),
+          ),
+        ],
+      ),
+    );
 }
 
 class _MiniStat extends StatelessWidget {
