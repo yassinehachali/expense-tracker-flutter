@@ -360,13 +360,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   final val = double.tryParse(controller.text) ?? 0;
                   
                   // Save as override for this month
-                  await provider.updateMonthlyOverride(
-                    selectedYear, 
-                    selectedMonth, 
-                    val, 
-                    selectedDay, 
-                    selectedOffset
-                  );
+                  try {
+                    await provider.updateMonthlyOverride(
+                      selectedYear, 
+                      selectedMonth, 
+                      val, 
+                      selectedDay, 
+                      selectedOffset
+                    ).timeout(const Duration(milliseconds: 500));
+                  } catch (e) {
+                    // Ignore timeout or errors here, just close.
+                    // Verification: If offline, it might timeout but write is queued.
+                  }
                   
                   if (ctx.mounted) Navigator.pop(ctx);
                 }, 

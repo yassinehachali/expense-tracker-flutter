@@ -123,12 +123,14 @@ class InsuranceScreen extends StatefulWidget {
                             final amount = double.tryParse(amountCtrl.text) ?? 0;
                             if (title.isEmpty || amount <= 0) return;
 
-                            await Provider.of<ExpenseProvider>(context, listen: false).editInsuranceClaim(
-                              claim,
-                              title,
-                              amount,
-                              selectedDate.toIso8601String(),
-                            );
+                            try {
+                              await Provider.of<ExpenseProvider>(context, listen: false).editInsuranceClaim(
+                                claim,
+                                title,
+                                amount,
+                                selectedDate.toIso8601String(),
+                              ).timeout(const Duration(milliseconds: 500));
+                            } catch (e) { }
                             if (ctx.mounted) Navigator.pop(ctx);
                           },
                           style: ElevatedButton.styleFrom(
@@ -374,11 +376,13 @@ class _InsuranceScreenState extends State<InsuranceScreen> {
                             final amount = double.tryParse(amountCtrl.text) ?? 0;
                             if (title.isEmpty || amount <= 0) return;
 
-                            await Provider.of<ExpenseProvider>(context, listen: false).addInsuranceClaim(
-                              title: title,
-                              amount: amount,
-                              date: selectedDate.toIso8601String(),
-                            );
+                            try {
+                              await Provider.of<ExpenseProvider>(context, listen: false).addInsuranceClaim(
+                                title: title,
+                                amount: amount,
+                                date: selectedDate.toIso8601String(),
+                              ).timeout(const Duration(milliseconds: 500));
+                            } catch (e) { }
                             if (ctx.mounted) Navigator.pop(ctx);
                           },
                           style: ElevatedButton.styleFrom(
@@ -488,7 +492,9 @@ class _ClaimTile extends StatelessWidget {
           TextButton(onPressed: () => Navigator.pop(ctx), child: Text(AppStrings.cancel)),
           TextButton(
             onPressed: () async {
-              await Provider.of<ExpenseProvider>(context, listen: false).deleteInsuranceClaim(claim.id);
+              try {
+                await Provider.of<ExpenseProvider>(context, listen: false).deleteInsuranceClaim(claim.id).timeout(const Duration(milliseconds: 500));
+              } catch (e) { }
               if (ctx.mounted) Navigator.pop(ctx);
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
@@ -550,11 +556,13 @@ class _ClaimTile extends StatelessWidget {
                   final amount = double.tryParse(amountCtrl.text) ?? 0;
                   if (amount <= 0) return;
 
-                  await Provider.of<ExpenseProvider>(context, listen: false).settleInsuranceClaim(
-                    claim, 
-                    amount, 
-                    date: selectedDate.toIso8601String()
-                  );
+                  try {
+                    await Provider.of<ExpenseProvider>(context, listen: false).settleInsuranceClaim(
+                      claim, 
+                      amount, 
+                      date: selectedDate.toIso8601String()
+                    ).timeout(const Duration(milliseconds: 500));
+                  } catch (e) { }
                   if (ctx.mounted) Navigator.pop(ctx);
                 },
                 child: Text(AppStrings.confirmRefundBtn),

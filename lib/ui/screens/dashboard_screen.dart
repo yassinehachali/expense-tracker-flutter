@@ -1,6 +1,7 @@
 // File: lib/ui/screens/dashboard_screen.dart
 import 'package:flutter/material.dart';
 import '../../core/app_strings.dart'; 
+import '../../data/services/notification_service.dart'; // Add import 
 import 'package:intl/intl.dart'; // Add intl import
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -31,6 +32,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _isPieChart = true;
   int? _checkedYear;
   int? _checkedMonth;
+
+  @override
+  void initState() {
+    super.initState();
+    // Check Alarm Permissions on startup
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+       await NotificationService().checkAndroidScheduleExactAlarmPermission();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {

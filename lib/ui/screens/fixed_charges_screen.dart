@@ -327,10 +327,14 @@ class FixedChargesScreen extends StatelessWidget {
                     delayedAutoPay: delayedAutoPay,
                   );
 
-                  if (charge == null) {
-                    await provider.addFixedCharge(newCharge);
-                  } else {
-                    await provider.updateFixedCharge(newCharge);
+                  try {
+                    if (charge == null) {
+                      await provider.addFixedCharge(newCharge).timeout(const Duration(milliseconds: 500));
+                    } else {
+                      await provider.updateFixedCharge(newCharge).timeout(const Duration(milliseconds: 500));
+                    }
+                  } catch (e) {
+                    // Ignore timeout, assume queued
                   }
                   
                   if (ctx.mounted) Navigator.pop(ctx);
@@ -367,10 +371,15 @@ class _ChargeTile extends StatelessWidget {
           ),
         ),
         title: Text(charge.name),
-        subtitle: Column(
+          subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text("${Utils.formatCurrency(charge.amount)} • ${charge.category}"),
+            if (!isApplied)
+               Padding(
+                 padding: const EdgeInsets.only(top: 2),
+                 child: Text("${AppStrings.dayOfMonth} ${charge.dayOfMonth}", style: const TextStyle(fontSize: 12, color: Colors.grey)),
+               ),
             if (isApplied)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
@@ -395,9 +404,6 @@ class _ChargeTile extends StatelessWidget {
                 child: Text(AppStrings.apply),
               ),
             
-            if (!isApplied) // Only show Text Day if we have space, or maybe just icon?
-               Text("${AppStrings.dayOfMonth} ${charge.dayOfMonth}", style: const TextStyle(fontSize: 12, color: Colors.grey)),
-               
             const SizedBox(width: 4),
             IconButton(
               icon: const Icon(LucideIcons.trash2, size: 18, color: Colors.grey),

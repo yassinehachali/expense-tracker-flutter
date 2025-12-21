@@ -13,6 +13,7 @@ class ExpenseModel {
   final bool isReturned;
   final double returnedAmount;
   final String? loanee;
+  final String? relatedLoanId; // ID of the Loan this transaction is repaying
   final String? originChargeId; // ID of the FixedCharge this originated from
   final bool excludeFromBalance;
 
@@ -29,6 +30,7 @@ class ExpenseModel {
     this.returnedAmount = 0.0,
     this.loanee,
     this.originChargeId,
+    this.relatedLoanId,
     this.createdAt,
     this.excludeFromBalance = false,
   });
@@ -44,6 +46,7 @@ class ExpenseModel {
       'returnedAmount': returnedAmount,
       if (loanee != null) 'loanee': loanee,
       if (originChargeId != null) 'originChargeId': originChargeId,
+      if (relatedLoanId != null) 'relatedLoanId': relatedLoanId,
       if (createdAt != null) 'createdAt': Timestamp.fromDate(createdAt!),
       'excludeFromBalance': excludeFromBalance,
       // Note: We don't save 'id' as a field, it's the doc key
@@ -72,31 +75,41 @@ class ExpenseModel {
       returnedAmount: (data['returnedAmount'] ?? 0).toDouble(),
       loanee: data['loanee'],
       originChargeId: data['originChargeId'],
+      relatedLoanId: data['relatedLoanId'],
       createdAt: createdDate,
       excludeFromBalance: data['excludeFromBalance'] ?? false,
     );
   }
 
   ExpenseModel copyWith({
+    String? id,
+    double? amount,
     String? category,
     String? description,
-    double? amount,
-    double? returnedAmount,
+    String? date,
+    String? type,
     bool? isReturned,
+    double? returnedAmount,
+    String? loanee,
+    String? originChargeId,
+    String? relatedLoanId,
+    DateTime? createdAt,
+    bool? excludeFromBalance,
   }) {
     return ExpenseModel(
-      id: id,
+      id: id ?? this.id,
       amount: amount ?? this.amount,
       category: category ?? this.category,
       description: description ?? this.description,
-      date: date,
-      type: type,
+      date: date ?? this.date,
+      type: type ?? this.type,
       isReturned: isReturned ?? this.isReturned,
       returnedAmount: returnedAmount ?? this.returnedAmount,
-      loanee: loanee,
-      originChargeId: originChargeId,
-      createdAt: createdAt,
-      excludeFromBalance: excludeFromBalance,
+      loanee: loanee ?? this.loanee,
+      originChargeId: originChargeId ?? this.originChargeId,
+      relatedLoanId: relatedLoanId ?? this.relatedLoanId,
+      createdAt: createdAt ?? this.createdAt,
+      excludeFromBalance: excludeFromBalance ?? this.excludeFromBalance,
     );
   }
 }

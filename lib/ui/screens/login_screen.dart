@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import '../../core/app_strings.dart';
 import '../../providers/auth_provider.dart';
+import '../../data/services/firestore_service.dart';
 import '../../core/theme.dart';
 import '../widgets/glass_container.dart';
 
@@ -53,6 +55,15 @@ class _LoginScreenState extends State<LoginScreen> {
       } else {
         await auth.signIn(email, password);
       }
+
+      // Persist Selected Language
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+         // Using a new instance since we don't have direct access to provider's service here easily
+         // and creating one is cheap.
+         await FirestoreService().updateSettings(user.uid, {'language': AppStrings.language});
+      }
+
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -90,6 +101,22 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  PopupMenuItem<String> _buildLangItem(String code, String label) {
+    final isSelected = AppStrings.language == code;
+    return PopupMenuItem(
+      value: code,
+      child: Row(
+        children: [
+          Text(label, style: GoogleFonts.outfit(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+          if (isSelected) ...[
+             const Spacer(),
+             const Icon(LucideIcons.check, size: 16, color: AppTheme.primary),
+          ]
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -106,8 +133,52 @@ class _LoginScreenState extends State<LoginScreen> {
                 : [const Color(0xFFF0F9FF), const Color(0xFFE0E7FF)], 
           ),
         ),
-        child: SafeArea(
-          child: Center(
+        child: Stack(
+          children: [
+            // Language Switcher (Top Right)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 16,
+              right: 24,
+              child: PopupMenuButton<String>(
+                onSelected: (lang) {
+                   setState(() {
+                      AppStrings.setLanguage(lang);
+                   });
+                },
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.black26 : Colors.white.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(color: Colors.white.withOpacity(0.1)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(LucideIcons.globe, size: 18, color: AppTheme.primary),
+                      const SizedBox(width: 8),
+                      Text(
+                         AppStrings.language.toUpperCase(),
+                         style: GoogleFonts.outfit(
+                           color: isDark ? Colors.white : const Color(0xFF1E293B),
+                           fontWeight: FontWeight.w600,
+                         ),
+                      ),
+                    ],
+                  ),
+                ),
+                itemBuilder: (context) => [
+                  _buildLangItem('en', "English"),
+                  _buildLangItem('fr', "Français"),
+                  _buildLangItem('ar', "العربية"),
+                ],
+              ),
+            ),
+
+            SafeArea(
+              child: Center(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24),
               child: ConstrainedBox(
@@ -345,6 +416,8 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ),
+      ],
+    ),
       ),
     );
   }

@@ -35,7 +35,7 @@ class UserSettingsModel {
   final Map<String, MonthlySettings> monthlyOverrides; // Key: "yyyy-MM"
   final List<String> ignoredRollovers; // Key: "yyyy-MM" where rollover is disabled
   final List<String> acceptedRollovers; // Key: "yyyy-MM" where rollover is explicitly accepted
-  final String language;
+  final String? language;
 
   UserSettingsModel({
     this.defaultSalary = 0.0, 
@@ -43,7 +43,7 @@ class UserSettingsModel {
     this.monthlyOverrides = const {},
     this.ignoredRollovers = const [],
     this.acceptedRollovers = const [],
-    this.language = 'en',
+    this.language,
   });
 
   factory UserSettingsModel.fromMap(Map<String, dynamic> map) {
@@ -70,7 +70,7 @@ class UserSettingsModel {
       monthlyOverrides: overrides,
       ignoredRollovers: ignored,
       acceptedRollovers: accepted,
-      language: map['language'] ?? 'en',
+      language: map['language'], // Allow null
     );
   }
   

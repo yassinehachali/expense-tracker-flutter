@@ -263,9 +263,11 @@ class AppStrings {
   static String get noDebtsMessage => _t('noDebtsMessage');
   static String get unknownLender => _t('unknownLender');
   static String get repayLoanTitle => _t('repayLoanTitle');
+  static String get receivePaymentTitle => _t('receivePaymentTitle');
   static String get amountExceedsDebt => _t('amountExceedsDebt');
   static String get markAsReturned => _t('markAsReturned');
   static String get dashboard => _t('dashboard');
+  static String get noLendingsMessage => _t('noLendingsMessage');
 
   // Categories
   static String get catHousing => _t('catHousing');
@@ -498,6 +500,8 @@ class AppStrings {
     'catShopping': 'Shopping',
     'catHealth': 'Health',
     'catOthers': 'Others',
+    'receivePaymentTitle': 'Receive Payment',
+    'noLendingsMessage': "You haven't lent money to anyone.",
   };
 
   static const Map<String, String> _fr = {
@@ -691,8 +695,10 @@ class AppStrings {
     'versionPrefix': 'Version: ',
     'updatingTitle': 'Mise à jour...',
     'noDebtsMessage': "Vous n'avez aucune dette!",
+    'noLendingsMessage': "Vous n'avez prêté d'argent à personne.",
     'unknownLender': 'Prêteur Inconnu',
     'repayLoanTitle': 'Rembourser le Prêt',
+    'receivePaymentTitle': 'Recevoir le paiement',
     'amountExceedsDebt': 'Le montant dépasse la dette restante',
     'markAsReturned': 'Marquer comme Retourné',
     'dashboard': 'Tableau de bord',
@@ -902,6 +908,8 @@ class AppStrings {
     'repayLoanTitle': 'سداد القرض',
     'amountExceedsDebt': 'المبلغ يتجاوز الدين المتبقي',
     'markAsReturned': 'تحديد كمسترد',
+    'receivePaymentTitle': 'استلام الدفعة',
+    'noLendingsMessage': 'لم تقرض المال لأي شخص.',
     'dashboard': 'لوحة التحكم',
     'catHousing': 'سكن',
     'catFood': 'طعام',

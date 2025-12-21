@@ -1,8 +1,11 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart' as fln;
+import 'package:flutter/foundation.dart'; // For kIsWeb
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import 'package:flutter/services.dart'; // For MethodChannel
 import '../../core/app_strings.dart'; 
+import 'package:permission_handler/permission_handler.dart';
+import 'dart:io'; // For Platform check 
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -84,6 +87,21 @@ class NotificationService {
       return await androidImplementation.requestNotificationsPermission();
     }
     return null;
+  }
+
+  /// Checks and requests the 'Schedule Exact Alarm' permission on Android 12+
+  Future<bool> checkAndroidScheduleExactAlarmPermission() async {
+    if (kIsWeb) return true; // Not needed on Web
+    if (!Platform.isAndroid) return true; // Not needed on iOS
+
+    // Check status
+    var status = await Permission.scheduleExactAlarm.status;
+    if (status.isGranted) return true;
+
+    // Request if not granted
+    // Note: On some Android versions, this opens system settings directly
+    status = await Permission.scheduleExactAlarm.request();
+    return status.isGranted;
   }
 
 

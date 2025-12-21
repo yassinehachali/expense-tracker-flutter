@@ -7,344 +7,314 @@ import '../../core/utils.dart';
 import '../../providers/expense_provider.dart';
 import '../../data/models/expense_model.dart';
 import '../widgets/glass_container.dart';
+import 'add_expense_screen.dart';
 
-class LoansManagerScreen extends StatelessWidget {
+class LoansManagerScreen extends StatefulWidget {
   const LoansManagerScreen({super.key});
 
   @override
+  State<LoansManagerScreen> createState() => _LoansManagerScreenState();
+}
+
+class _LoansManagerScreenState extends State<LoansManagerScreen> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final provider = Provider.of<ExpenseProvider>(context);
+    // Determine language-specific tab order or keeping fixed?
+    // Fixed: Tab 0 = Lendings (I Lent), Tab 1 = Debts (I Borrowed)
+    // Adjust strings accordingly.
     
-    // Filter for all Borrowed type transactions
-    // We scan ALL expenses, not just the current month, because debt persists.
-    // Provider.expenses contains everything loaded? 
-    // Wait, provider._expenses currently loads ALL for the user.
-    final loans = provider.expenses.where((e) => e.type == 'borrow').toList();
-    
-    // Move active loans to top
-    loans.sort((a, b) {
-      if (a.isReturned == b.isReturned) return b.date.compareTo(a.date);
-      return a.isReturned ? 1 : -1;
-    });
-
-    // Calculate Total Borrowed vs Repaid
-    double totalBorrowed = 0;
-    double totalRepaid = 0; // This is 'returnedAmount' on the borrow tx
-    for (var l in loans) {
-      totalBorrowed += l.amount;
-      totalRepaid += l.returnedAmount;
-    }
-
     return Scaffold(
       appBar: AppBar(
         title: Text(AppStrings.loansManager),
         centerTitle: true,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            // Summary Card
-            GlassContainer(
-              padding: const EdgeInsets.all(24),
-              gradient: LinearGradient(
-                colors: [Colors.green.shade700, Colors.green.shade500],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(20),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(AppStrings.totalBorrowed, style: const TextStyle(color: Colors.white70)),
-                      const SizedBox(height: 8),
-                      Text(
-                        Utils.formatCurrency(totalBorrowed),
-                        style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
-                      ),
-                      const SizedBox(height: 4),
-                       Text(
-                        "${AppStrings.repaidPrefix}${Utils.formatCurrency(totalRepaid)}",
-                        style: const TextStyle(fontSize: 14, color: Colors.white70),
-                      ),
-                    ],
-                  ),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(16)
-                    ),
-                    child: const Icon(LucideIcons.coins, color: Colors.white, size: 32),
-                  )
-                ],
-              ),
-            ),
-            
-            const SizedBox(height: 24),
-            
-            if (loans.isEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 40),
-                child: Center(
-                  child: Column(
-                    children: [
-                      Icon(LucideIcons.checkCircle, size: 60, color: theme.dividerColor),
-                      const SizedBox(height: 16),
-                      Text(AppStrings.noDebtsMessage, style: theme.textTheme.titleMedium?.copyWith(color: theme.hintColor)),
-                    ],
-                  ),
-                ),
-              )
-            else
-              ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: loans.length,
-                itemBuilder: (ctx, index) {
-                  final loan = loans[index];
-                  final remaining = loan.amount - loan.returnedAmount;
-                  final isFullyRepaid = loan.isReturned;
-
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: theme.cardColor,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: theme.dividerColor),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                         Row(
-                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                           children: [
-                             Row(
-                               children: [
-                                 Container(
-                                   padding: const EdgeInsets.all(10),
-                                   decoration: BoxDecoration(
-                                     color: isFullyRepaid ? Colors.green.withOpacity(0.1) : Colors.orange.withOpacity(0.1),
-                                     shape: BoxShape.circle,
-                                   ),
-                                   child: Icon(
-                                      isFullyRepaid ? LucideIcons.check : LucideIcons.clock,
-                                      size: 20,
-                                      color: isFullyRepaid ? Colors.green : Colors.orange,
-                                   ),
-                                 ),
-                                 const SizedBox(width: 12),
-                                 Column(
-                                   crossAxisAlignment: CrossAxisAlignment.start,
-                                   children: [
-                                     Text(
-                                       loan.description.isNotEmpty ? loan.description : AppStrings.unknownLender,
-                                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                                     ),
-                                     Text(
-                                       Utils.formatDate(DateTime.parse(loan.date)),
-                                       style: theme.textTheme.bodySmall,
-                                     ),
-                                   ],
-                                 ),
-                               ],
-                             ),
-                             Text(
-                               Utils.formatCurrency(loan.amount),
-                               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                             ),
-                           ],
-                         ),
-                         const SizedBox(height: 16),
-                         Row(
-                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                           children: [
-                             Column(
-                               crossAxisAlignment: CrossAxisAlignment.start,
-                               children: [
-                                 Text(AppStrings.remaining.replaceAll(':', ''), style: theme.textTheme.bodySmall),
-                                 Text(
-                                   Utils.formatCurrency(remaining),
-                                   style: TextStyle(
-                                     fontWeight: FontWeight.bold, 
-                                     color: isFullyRepaid ? Colors.green : theme.textTheme.bodyLarge?.color
-                                   ),
-                                 ),
-                               ],
-                             ),
-                             if (!isFullyRepaid)
-                               ElevatedButton(
-                                 onPressed: () => _showRepayDialog(context, loan, provider),
-                                 style: ElevatedButton.styleFrom(
-                                   backgroundColor: theme.primaryColor,
-                                   foregroundColor: Colors.white,
-                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                 ),
-                                 child: Text(AppStrings.repay),
-                               )
-                           ],
-                         ),
-                         const SizedBox(height: 8),
-                         LinearProgressIndicator(
-                           value: loan.amount == 0 ? 0 : (loan.returnedAmount / loan.amount),
-                           backgroundColor: theme.dividerColor,
-                           color: Colors.green,
-                           borderRadius: BorderRadius.circular(4),
-                         ),
-                      ],
-                    ),
-                  );
-                },
-              ),
+            bottom: TabBar(
+          controller: _tabController,
+          tabs: [
+            Tab(text: AppStrings.filterLoans, icon: const Icon(LucideIcons.arrowUpRight)), 
+            Tab(text: AppStrings.borrow, icon: const Icon(LucideIcons.arrowDownLeft)), 
           ],
         ),
       ),
+      body: Consumer<ExpenseProvider>(
+        builder: (context, provider, child) {
+          final lendings = provider.expenses.where((e) => e.type == 'loan').toList();
+          final debts = provider.expenses.where((e) => e.type == 'borrow').toList();
+          
+          return TabBarView(
+            controller: _tabController,
+            children: [
+              _LoansList(
+                loans: lendings, 
+                isDebts: false, 
+                provider: provider,
+                emptyMessage: AppStrings.noLendingsMessage, 
+              ),
+              _LoansList(
+                loans: debts, 
+                isDebts: true, 
+                provider: provider,
+                emptyMessage: AppStrings.noDebtsMessage,
+              ),
+            ],
+          );
+        },
+      ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showAddLoanDialog(context, provider),
+        onPressed: () {
+           final type = _tabController.index == 0 ? 'loan' : 'borrow';
+           _showAddDialog(context, type);
+        },
         label: Text(AppStrings.addTransaction),
         icon: const Icon(LucideIcons.plus),
-        backgroundColor: Colors.green,
+        backgroundColor: _tabController.index == 0 ? Colors.indigo : Colors.orange,
       ),
     );
   }
 
-  void _showAddLoanDialog(BuildContext context, ExpenseProvider provider) {
-    final amountController = TextEditingController();
-    final personController = TextEditingController();
-    DateTime selectedDate = DateTime.now();
-    bool isPastDebt = false;
+  void _showAddDialog(BuildContext context, String type) {
+     Navigator.push(
+       context, 
+       MaterialPageRoute(
+         builder: (_) => AddExpenseScreen(initialType: type) 
+       )
+     );
+  }
+}
 
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: Text("Add Borrowed Amount"),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+class _LoansList extends StatelessWidget {
+  final List<ExpenseModel> loans;
+  final bool isDebts; 
+  final ExpenseProvider provider;
+  final String emptyMessage;
+
+  const _LoansList({
+    required this.loans, 
+    required this.isDebts, 
+    required this.provider,
+    required this.emptyMessage,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (loans.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(isDebts ? LucideIcons.checkCircle : LucideIcons.wallet, size: 64, color: Colors.grey.withOpacity(0.5)),
+            const SizedBox(height: 16),
+            Text(emptyMessage, style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.grey)),
+          ],
+        ),
+      );
+    }
+
+    final sorted = List<ExpenseModel>.from(loans)
+      ..sort((a, b) => b.date.compareTo(a.date));
+
+    double totalActive = 0;
+    double totalRepaid = 0;
+    for (var l in sorted) {
+      totalActive += l.amount;
+      totalRepaid += l.returnedAmount;
+    }
+
+    final theme = Theme.of(context);
+    final primaryColor = isDebts ? Colors.orange : Colors.indigo;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          // Header Card
+          GlassContainer(
+            padding: const EdgeInsets.all(20),
+            borderRadius: BorderRadius.circular(20),
+            gradient: LinearGradient(
+              colors: isDebts 
+                ? [Colors.orange.shade800, Colors.orange.shade500] 
+                : [Colors.indigo.shade800, Colors.indigo.shade500],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                TextField(
-                  controller: amountController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: InputDecoration(
-                    labelText: AppStrings.amountLabel,
-                    prefixIcon: const Icon(LucideIcons.dollarSign),
-                    border: const OutlineInputBorder(),
-                  ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isDebts ? AppStrings.totalBorrowed : AppStrings.totalLoan, 
+                      style: const TextStyle(color: Colors.white70)
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      Utils.formatCurrency(totalActive), 
+                      style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      "${AppStrings.repaidPrefix}${Utils.formatCurrency(totalRepaid)}",
+                      style: const TextStyle(fontSize: 13, color: Colors.white60)
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: personController,
-                  decoration: InputDecoration(
-                    labelText: "Lender (Person/Bank)",
-                    prefixIcon: const Icon(LucideIcons.user),
-                    border: const OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(LucideIcons.calendar),
-                  title: Text(DateFormat('yyyy-MM-dd').format(selectedDate)),
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: selectedDate,
-                      firstDate: DateTime(2000),
-                      lastDate: DateTime.now(),
-                    );
-                    if (picked != null) {
-                      setState(() {
-                         selectedDate = picked;
-                         // Auto-check "Past Debt" if older than 30 days? 
-                         // Optional, user can manual check.
-                      });
-                    }
-                  },
-                ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text("Pre-existing Debt?"),
-                  subtitle: const Text("Does not affect current balance"),
-                  value: isPastDebt,
-                  onChanged: (val) => setState(() => isPastDebt = val),
-                ),
+                Icon(isDebts ? LucideIcons.alertCircle : Icons.handshake, size: 40, color: Colors.white30)
               ],
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx), 
-              child: Text(AppStrings.cancel)
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                 final amountText = amountController.text;
-                 final amount = double.tryParse(amountText);
-                 if (amount == null || amount <= 0) return;
-                 
-                 final person = personController.text.trim();
-                 if (person.isEmpty) return;
+          const SizedBox(height: 20),
 
-                 final newExpense = ExpenseModel(
-                   id: '', // provider assigns ID if Firestore not used directly? 
-                   // Wait, ExpenseModel needs ID on creation? 
-                   // FirestoreService usually generates ID. 
-                   // ExpenseProvider.addExpense calls FirestoreService.addExpense which sets ID?
-                   // Let's check provider.addExpense. 
-                   // Usually models created locally have empty ID then replaced by Firestore ID.
-                   // Or UUID. 
-                   // I'll leave ID empty string, assuming Provider/Service handles it.
-                   // Checking addExpense: it calls _firestoreService.addExpense.
-                   
-                   amount: amount,
-                   category: 'Borrowed',
-                   description: "Borrowed from $person",
-                   date: selectedDate.toIso8601String(),
-                   type: 'borrow',
-                   isReturned: false,
-                   loanee: person,
-                   excludeFromBalance: isPastDebt,
-                 );
-                 
-                 await provider.addExpense(newExpense);
-                 if (context.mounted) Navigator.pop(ctx);
-              }, 
-              child: Text(AppStrings.confirm)
-            ),
-          ],
-        ),
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: sorted.length,
+            itemBuilder: (ctx, index) {
+              final item = sorted[index];
+              final remaining = item.amount - item.returnedAmount;
+              final isFullyReturned = item.isReturned;
+
+              return Card(
+                margin: const EdgeInsets.only(bottom: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                       Row(
+                         children: [
+                           Container(
+                             padding: const EdgeInsets.all(10),
+                             decoration: BoxDecoration(
+                               color: isFullyReturned 
+                                 ? Colors.green.withOpacity(0.1) 
+                                 : primaryColor.withOpacity(0.1),
+                               shape: BoxShape.circle
+                             ),
+                             child: Icon(
+                               isFullyReturned ? LucideIcons.check : (isDebts ? LucideIcons.arrowDownLeft : LucideIcons.arrowUpRight),
+                               color: isFullyReturned ? Colors.green : primaryColor,
+                               size: 20,
+                             ),
+                           ),
+                           const SizedBox(width: 12),
+                           Expanded(
+                             child: Column(
+                               crossAxisAlignment: CrossAxisAlignment.start,
+                               children: [
+                                 Text(
+                                   item.description.isNotEmpty ? item.description : (item.loanee ?? AppStrings.unknownLender),
+                                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                 ),
+                                 Text(
+                                   Utils.formatDate(DateTime.parse(item.date)),
+                                   style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                 ),
+                               ],
+                             ),
+                           ),
+                           Text(
+                             Utils.formatCurrency(item.amount),
+                             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                           ),
+                         ],
+                       ),
+                       const SizedBox(height: 12),
+                       ClipRRect(
+                         borderRadius: BorderRadius.circular(4),
+                         child: LinearProgressIndicator(
+                           value: item.amount == 0 ? 0 : (item.returnedAmount / item.amount),
+                           backgroundColor: theme.dividerColor.withOpacity(0.2),
+                           color: isFullyReturned ? Colors.green : primaryColor,
+                           minHeight: 6,
+                         ),
+                       ),
+                       const SizedBox(height: 12),
+                       Row(
+                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                         children: [
+                            Text(
+                              "${AppStrings.remaining} ${Utils.formatCurrency(remaining)}",
+                              style: TextStyle(
+                                fontSize: 13, 
+                                color: isFullyReturned ? Colors.green : theme.textTheme.bodyMedium?.color
+                              ),
+                            ),
+                            
+                            Row(
+                              children: [
+                                if (!isFullyReturned)
+                                  TextButton(
+                                    onPressed: () => _showRepayDialog(context, item, provider, isDebts),
+                                    child: Text(isDebts ? AppStrings.repay : AppStrings.markAsReturned), 
+                                  ),
+                                PopupMenuButton<String>(
+                                  onSelected: (val) {
+                                    if (val == 'edit') {
+                                       Navigator.push(context, MaterialPageRoute(builder: (_) => AddExpenseScreen(expenseToEdit: item)));
+                                    } else if (val == 'delete') {
+                                       _confirmDelete(context, item, provider);
+                                    }
+                                  },
+                                  itemBuilder: (ctx) => [
+                                    PopupMenuItem(value: 'edit', child: Text(AppStrings.editTransaction)),
+                                    PopupMenuItem(value: 'delete', child: Text(AppStrings.delete, style: const TextStyle(color: Colors.red))),
+                                  ],
+                                  child: const Padding(
+                                    padding: EdgeInsets.all(8.0),
+                                    child: Icon(Icons.more_vert, size: 20, color: Colors.grey),
+                                  ),
+                                )
+                              ],
+                            )
+                         ],
+                       )
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
       ),
     );
   }
 
-  void _showRepayDialog(BuildContext context, ExpenseModel loan, ExpenseProvider provider) {
+  void _showRepayDialog(BuildContext context, ExpenseModel loan, ExpenseProvider provider, bool isDebts) {
     final controller = TextEditingController();
     final remaining = loan.amount - loan.returnedAmount;
-
+    
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(AppStrings.repayLoanTitle),
+        title: Text(isDebts ? AppStrings.repayLoanTitle : AppStrings.receivePaymentTitle),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-             Text("${AppStrings.totalBorrowed}${Utils.formatCurrency(loan.amount)}"),
+             Text("${AppStrings.amountLabel}: ${Utils.formatCurrency(loan.amount)}"), // AppStrings.amountLabel
              Text("${AppStrings.remaining}${Utils.formatCurrency(remaining)}"),
              const SizedBox(height: 16),
              TextField(
                controller: controller,
                keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 decoration: InputDecoration(
-                  labelText: AppStrings.amountLabel,
-                  hintText: AppStrings.enterAmount,
+                  labelText: isDebts ? AppStrings.amountLabel : AppStrings.refundAmountReceivedLabel, // or similar
+                  hintText: "0.00",
                   border: const OutlineInputBorder(),
                   prefixIcon: const Icon(Icons.attach_money),
                 ),
@@ -357,17 +327,36 @@ class LoansManagerScreen extends StatelessWidget {
             onPressed: () {
                final val = double.tryParse(controller.text);
                if (val == null || val <= 0) return;
-               if (val > remaining) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppStrings.amountExceedsDebt)));
+               if (val > remaining + 0.01) { // Close enough float tolerance
+                  // Error
                   return;
                }
-               
+               // Reuse repayBorrowing because logic (amount returned increase) is symmetric
                provider.repayBorrowing(loan, val);
                Navigator.pop(ctx);
-               ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("${AppStrings.repaidPrefix}${Utils.formatCurrency(val)}")));
             }, 
             child: Text(AppStrings.confirm)
           ),
+        ],
+      ),
+    );
+  }
+  
+  void _confirmDelete(BuildContext context, ExpenseModel item, ExpenseProvider provider) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(AppStrings.deleteConfirmationTitle),
+        content: Text(AppStrings.deleteConfirmationBody),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(AppStrings.cancel)),
+          TextButton(
+            onPressed: () {
+               provider.deleteExpense(item.id);
+               Navigator.pop(ctx);
+            },
+            child: Text(AppStrings.delete, style: const TextStyle(color: Colors.red)),
+          )
         ],
       ),
     );

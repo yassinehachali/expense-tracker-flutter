@@ -81,16 +81,29 @@ class FirestoreService {
 
   // --- Actions ---
 
+  String getNewExpenseId(String uid) {
+    return _getExpensesRef(uid).doc().id;
+  }
+
+  Future<void> setExpense(String uid, ExpenseModel expense) async {
+    await _getExpensesRef(uid).doc(expense.id).set(expense.toMap());
+  }
+
   Future<String> addExpense(String uid, ExpenseModel expense) async {
-    final docRef = await _getExpensesRef(uid).add({
-      ...expense.toMap(),
-      'createdAt': FieldValue.serverTimestamp(),
-    });
+    final docRef = await _getExpensesRef(uid).add(expense.toMap());
     return docRef.id;
   }
 
   Future<void> updateExpense(String uid, String expenseId, Map<String, dynamic> data) async {
     await _getExpensesRef(uid).doc(expenseId).update(data);
+  }
+
+  Future<ExpenseModel?> getExpense(String uid, String expenseId) async {
+    final doc = await _getExpensesRef(uid).doc(expenseId).get();
+    if (doc.exists) {
+      return ExpenseModel.fromFirestore(doc);
+    }
+    return null;
   }
 
   Future<void> deleteExpense(String uid, String expenseId) async {
@@ -223,7 +236,19 @@ class FirestoreService {
     });
   }
 
+  String getNewInsuranceClaimId(String uid) {
+    return _getInsuranceClaimsRef(uid).doc().id;
+  }
+
+  Future<void> setInsuranceClaim(String uid, InsuranceClaimModel claim) async {
+    await _getInsuranceClaimsRef(uid).doc(claim.id).set({
+      ...claim.toMap(),
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+  }
+
   Future<String> addInsuranceClaim(String uid, InsuranceClaimModel claim) async {
+    // Legacy wrapper if needed, but we will switch to setInsuranceClaim
     final docRef = await _getInsuranceClaimsRef(uid).add({
       ...claim.toMap(),
       'createdAt': FieldValue.serverTimestamp(),

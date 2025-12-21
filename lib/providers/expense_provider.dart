@@ -22,7 +22,9 @@ class ExpenseProvider with ChangeNotifier {
   List<CategoryModel> _categories = [];
   List<FixedChargeModel> _fixedCharges = [];
   List<InsuranceClaimModel> _insuranceClaims = [];
-  
+  final List<InsuranceClaimModel> _localPendingClaims = []; // Store offline creations here
+  final Set<String> _localDeletedClaimIds = {}; // Store pending deletes to suppress "Zombie" reappearance
+
   // Settings State
   UserSettingsModel _settings = UserSettingsModel();
   UserSettingsModel get settings => _settings;
@@ -39,7 +41,16 @@ class ExpenseProvider with ChangeNotifier {
   StreamSubscription? _fixedChargesSub;
   StreamSubscription? _insuranceClaimsSub;
 
-  List<InsuranceClaimModel> get insuranceClaims => _insuranceClaims;
+  List<InsuranceClaimModel> get insuranceClaims {
+    // Merge Pending + Stream (Prefer Stream if ID exists)
+    final streamIds = _insuranceClaims.map((c) => c.id).toSet();
+    final visiblePending = _localPendingClaims.where((c) => !streamIds.contains(c.id)).toList();
+    
+    final combined = [...visiblePending, ..._insuranceClaims];
+    
+    // Filter out any locally deleted IDs (resolving the "Zombie Reappearance" issue)
+    return combined.where((c) => !_localDeletedClaimIds.contains(c.id)).toList();
+  }
 
   bool _isLoading = false;
   bool get isLoading => _isLoading;
@@ -140,8 +151,18 @@ class ExpenseProvider with ChangeNotifier {
 
     _settingsSub = _firestoreService.getSettingsStream(uid).listen((data) {
       _settings = data;
+      
       // Update App Language
-      AppStrings.setLanguage(_settings.language);
+      if (_settings.language != null) {
+        // Server has a preference, use it.
+        AppStrings.setLanguage(_settings.language!);
+      } else {
+        // Server has no preference (new user/guest). 
+        // Keep the current local preference (set by LoginScreen) and SAVE it to server.
+        // This ensures the Login selection overrides the "default" state.
+        _firestoreService.updateSettings(uid, {'language': AppStrings.language});
+      }
+
       // Force refresh of any derived data
       notifyListeners();
     }, onError: (e) => print("Error loading settings: $e"));
@@ -159,6 +180,14 @@ class ExpenseProvider with ChangeNotifier {
 
     _insuranceClaimsSub = _firestoreService.getInsuranceClaimsStream(uid).listen((data) {
       _insuranceClaims = data;
+      // Clean up pending items that have arrived in the stream
+      final dataIds = data.map((c) => c.id).toSet();
+      _localPendingClaims.removeWhere((c) => dataIds.contains(c.id));
+      
+      // Clean up pending deletes that have been confirmed (item is gone from stream)
+      // If the ID is NOT in the stream, it is safe to stop tracking it as "pending delete"
+      _localDeletedClaimIds.removeWhere((id) => !dataIds.contains(id));
+      
       notifyListeners();
     }, onError: (e) => print("Error loading insurance claims: $e"));
   }
@@ -217,6 +246,9 @@ class ExpenseProvider with ChangeNotifier {
   }
 
   List<ExpenseModel> get filteredExpenses {
+    // Optimization: Calculate cycle boundary once
+    final cutoff = currentCycleEnd.add(const Duration(days: 1)); // Start of next cycle
+
     List<ExpenseModel> result = _expenses.where((exp) {
       if (exp.excludeFromBalance) return false; // Hide past debts from main lists
       
@@ -228,6 +260,12 @@ class ExpenseProvider with ChangeNotifier {
       if (exp.type == 'loan') {
          // If filter is explicitly 'loan', show ALL loans (active and returned history)
          if (_filterType == 'loan') return true;
+         
+         // Fix: Only show loans that exist relative to this cycle (Date < NextCycleStart)
+         // Prevents Future Loans from leaking into Past Months
+         // Using 'cutoff' handles time components correctly (e.g. Last Day 23:59 is < Next Day 00:00)
+         if (d.isAfter(cutoff) || d.isAtSameMomentAs(cutoff)) return false; 
+         
          // Otherwise (Dashboard/All), show active loans OR loans from this cycle
          return !exp.isReturned || inCycle;
       }
@@ -240,21 +278,6 @@ class ExpenseProvider with ChangeNotifier {
       }
       return inCycle;
     }).toList();
-
-    result.sort((a, b) {
-       int dateA = DateTime.parse(a.date).millisecondsSinceEpoch;
-       int dateB = DateTime.parse(b.date).millisecondsSinceEpoch;
-       if (dateA != dateB) return dateB - dateA;
-       
-       final tA = a.createdAt?.millisecondsSinceEpoch ?? 0;
-       final tB = b.createdAt?.millisecondsSinceEpoch ?? 0;
-       
-       if (_filterType == 'loan') {
-         if (a.isReturned == b.isReturned) return tB - tA;
-         return a.isReturned ? 1 : -1;
-       }
-       return tB - tA;
-    });
 
     // Secondary filter optimization
     if (_filterType == 'expense') {
@@ -273,7 +296,8 @@ class ExpenseProvider with ChangeNotifier {
         int prevMonth = _selectedMonth - 1;
         if (prevMonth < 0) prevMonth = 11;
         
-        result.insert(0, ExpenseModel( // Add to top or sort? If we sort by date, this is Start Date
+        // Add to list (will be sorted below)
+        result.add(ExpenseModel(
           id: 'rollover_virtual', // Unique virtual ID
           amount: rollover,
           category: 'Rollover',
@@ -283,6 +307,22 @@ class ExpenseProvider with ChangeNotifier {
         ));
       }
     }
+
+    // Sort Result (Including Rollover)
+    result.sort((a, b) {
+       int dateA = DateTime.parse(a.date).millisecondsSinceEpoch;
+       int dateB = DateTime.parse(b.date).millisecondsSinceEpoch;
+       if (dateA != dateB) return dateB - dateA;
+       
+       final tA = a.createdAt?.millisecondsSinceEpoch ?? 0;
+       final tB = b.createdAt?.millisecondsSinceEpoch ?? 0;
+       
+       if (_filterType == 'loan') {
+         if (a.isReturned == b.isReturned) return tB - tA;
+         return a.isReturned ? 1 : -1;
+       }
+       return tB - tA;
+    });
 
     return result;
   }
@@ -422,9 +462,21 @@ class ExpenseProvider with ChangeNotifier {
   
   Future<void> updateExpense(ExpenseModel expense) async {
     if (userId == null) return;
+    
+    // 1. Fetch OLD expense for diff calculation (before update)
+    final oldExpense = _expenses.firstWhere((e) => e.id == expense.id, orElse: () => expense);
+    
     await _firestoreService.updateExpense(userId!, expense.id, expense.toMap());
 
-    // Check if this expense is linked to an Insurance Claim and update it
+    // 2. Sync if this is a Repayment (Linked to a Loan)
+    if (expense.relatedLoanId != null && expense.relatedLoanId!.isNotEmpty) {
+       final diff = expense.amount - oldExpense.amount;
+       if (diff.abs() > 0.01) {
+          await _syncLoanRepayment(expense.relatedLoanId!, diff);
+       }
+    }
+
+    // 3. Check if this expense is linked to an Insurance Claim and update it
     try {
       final linkedClaim = _insuranceClaims.firstWhere(
         (c) => c.relatedExpenseId == expense.id, 
@@ -436,10 +488,45 @@ class ExpenseProvider with ChangeNotifier {
          await _firestoreService.updateInsuranceClaim(userId!, linkedClaim.id, {
            'totalAmount': expense.amount,
          });
-         // We could also sync the title/date if we wanted, but amount is critical.
       }
     } catch (e) {
       print("Error syncing insurance claim: $e");
+    }
+  }
+
+  /// Helper to sync repayment changes back to the original loan
+  Future<void> _syncLoanRepayment(String loanId, double deltaReturnedAmount) async {
+    if (userId == null) return;
+
+    ExpenseModel? loan;
+    
+    // 1. Try to find the loan in memory first (Fast)
+    final loanIndex = _expenses.indexWhere((e) => e.id == loanId);
+    if (loanIndex != -1) {
+       loan = _expenses[loanIndex];
+    } else {
+       // 2. If not in memory (e.g. historical/filtered), fetch from Firestore
+       try {
+          final doc = await _firestoreService.getExpense(userId!, loanId);
+          if (doc != null) {
+            loan = doc;
+          }
+       } catch (e) {
+          print("Error fetching parent loan for sync: $e");
+       }
+    }
+
+    if (loan != null) {
+       final newReturned = loan.returnedAmount + deltaReturnedAmount;
+       final isReturned = newReturned >= loan.amount; 
+       
+       // Update Firestore
+       await _firestoreService.updateExpense(userId!, loan.id, {
+         'returnedAmount': newReturned,
+         'isReturned': isReturned,
+       });
+    } else {
+       print("Warning: Parent Loan $loanId not found (Memory or DB) to sync repayment.");
     }
   }
 
@@ -508,18 +595,26 @@ class ExpenseProvider with ChangeNotifier {
       'isReturned': isFullyReturned,
     });
 
-    // 2. Create Repayment Expense (deducts from balance)
+    // 2. Create Repayment Transaction
+    // If I Lent (loan), receiving repayment is INCOME.
+    // If I Borrowed (borrow), paying back is EXPENSE.
+    final isLending = loan.type == 'loan';
+    
+    final type = isLending ? 'income' : 'expense';
+    final category = isLending ? 'Loan Repayment' : 'Borrow Repayment';
+    
+    final personName = loan.loanee ?? loan.description;
+    final prefix = isFullyReturned ? 'Repayment' : 'Partial Repayment';
+    final desc = isLending ? '$prefix from $personName' : '$prefix to $personName';
+
     final expenseTx = ExpenseModel(
       id: '',
       amount: amountToRepay,
-      category: 'Borrow Repayment', // Or just 'Repayment'
+      category: category, 
       date: DateTime.now().toIso8601String(),
-      type: 'expense',
-      description: 'Repayment to ${loan.loanee ?? loan.description}', // "Repayment to John"
-      // User required 'Hand Coins' icon. 
-      // Note: Category icon is determined by name. 
-      // We should probably add 'Borrow Repayment' to default categories OR handle it visually.
-      // But ExpenseModel doesn't store icon directly, it relies on category.
+      type: type,
+      description: desc,
+      relatedLoanId: loan.id, // Link to loan
     );
     await addExpense(expenseTx);
   }
@@ -591,6 +686,15 @@ class ExpenseProvider with ChangeNotifier {
     // 2. Initial Setup
     final start = currentCycleStart;
     final end = currentCycleEnd;
+    
+    // Fix: Strictly prevent backfilling for ANY past cycle.
+    // If the cycle has ended (end date is in the past), we do NOT auto-apply charges.
+    // This allows users to delete charges from previous months without them regenerating.
+    final now = DateTime.now();
+    if (end.isBefore(now)) {
+       return;
+    }
+
     final targetMonth = DateTime(_selectedYear, _selectedMonth + 1); // For constructing dates
 
     for (var charge in autos) {
@@ -836,6 +940,15 @@ class ExpenseProvider with ChangeNotifier {
 
   Future<void> deleteExpense(String id) async {
     if (userId == null) return;
+    
+    // Check if it's a linked repayment before deleting
+    final exp = _expenses.firstWhere((e) => e.id == id, orElse: () => ExpenseModel(id: '', amount: 0, category: '', description: '', date: '', type: ''));
+    
+    if (exp.id.isNotEmpty && exp.relatedLoanId != null && exp.relatedLoanId!.isNotEmpty) {
+       // Revert the repayment amount from the loan
+       await _syncLoanRepayment(exp.relatedLoanId!, -exp.amount);
+    }
+
     await _firestoreService.deleteExpense(userId!, id);
   }
   
@@ -973,9 +1086,13 @@ class ExpenseProvider with ChangeNotifier {
   }) async {
     if (userId == null) return;
 
-    // 1. Create the Expense (User pays upfront)
+    // 1. Generate IDs Synchronously
+    final expId = _firestoreService.getNewExpenseId(userId!);
+    final claimId = _firestoreService.getNewInsuranceClaimId(userId!);
+
+    // 2. Create Objects with these IDs
     final newExpense = ExpenseModel(
-      id: '',
+      id: expId,
       amount: amount,
       category: 'Health',
       description: "$title (Insurance Pending)",
@@ -983,57 +1100,86 @@ class ExpenseProvider with ChangeNotifier {
       type: 'expense',
     );
     
-    // Get Ref ID.
-    final expRef = await _firestoreService.addExpense(userId!, newExpense);
-    
-    // 2. Create the Claim
     final claim = InsuranceClaimModel(
-      id: '',
+      id: claimId,
       userId: userId!,
       title: title,
       totalAmount: amount,
       date: date,
       status: 'pending',
-      relatedExpenseId: expRef,
+      relatedExpenseId: expId,
       refundAmount: 0,
     );
+
+    // 3. Optimistic Update: Add to LOCAL PENDING list & Notify IMMEDIATELY
+    // This runs synchronously, ensuring UI updates before any potential network blocking
+    _localPendingClaims.add(claim);
+    notifyListeners();
     
-    await _firestoreService.addInsuranceClaim(userId!, claim);
+    // 4. Perform Firestore Writes (These might wait for server ack, but UI is already happy)
+    await _firestoreService.setExpense(userId!, newExpense);
+    await _firestoreService.setInsuranceClaim(userId!, claim);
   }
 
   Future<void> editInsuranceClaim(InsuranceClaimModel claim, String newTitle, double newAmount, String newDate) async {
     if (userId == null) return;
 
-    // 1. Update the Claim
+    // 1. Create Updated Claim Object (Optimistic)
+    final updatedClaim = InsuranceClaimModel(
+      id: claim.id,
+      userId: claim.userId,
+      title: newTitle,
+      totalAmount: newAmount,
+      refundAmount: claim.refundAmount,
+      date: newDate,
+      status: claim.status,
+      relatedExpenseId: claim.relatedExpenseId,
+    );
+
+    // 2. Optimistic UI Update: Replace in lists & Notify
+    final index = _insuranceClaims.indexWhere((c) => c.id == claim.id);
+    if (index != -1) {
+      _insuranceClaims[index] = updatedClaim;
+    }
+    final pendingIndex = _localPendingClaims.indexWhere((c) => c.id == claim.id);
+    if (pendingIndex != -1) {
+      _localPendingClaims[pendingIndex] = updatedClaim;
+    }
+    notifyListeners(); // UI Updates Instantly
+
+    // 3. Perform Firestore Writes (Background)
     await _firestoreService.updateInsuranceClaim(userId!, claim.id, {
       'title': newTitle,
       'totalAmount': newAmount,
       'date': newDate,
     });
 
-    // 2. Update the Linked Expense
+    // 4. Update the Linked Expense (Background + Optimistic)
     if (claim.relatedExpenseId != null && claim.relatedExpenseId!.isNotEmpty) {
        try {
-         final original = _expenses.firstWhere((e) => e.id == claim.relatedExpenseId);
-         
-         // Preserve description suffix if exists
-         String currentDesc = original.description;
-         String suffix = "";
-         if (currentDesc.contains("(Insurance Pending)")) suffix = " (Insurance Pending)";
-         else if (currentDesc.contains("(Insurance Repaid)")) suffix = " (Insurance Repaid)";
-         
-         final updatedExpense = original.copyWith(
-            description: "$newTitle$suffix",
-            amount: newAmount,
-            // Date logic: usually expense date matches claim date
-            // We can update it or keep original. Let's update it to stay perfectly synced.
-         );
-         
-         // We construct the map manually to include date update if copyWith doesn't handle it fully or we want explicit control
-         final updateMap = updatedExpense.toMap();
-         updateMap['date'] = newDate;
+         final originalIndex = _expenses.indexWhere((e) => e.id == claim.relatedExpenseId);
+         if (originalIndex != -1) {
+            final original = _expenses[originalIndex];
+            
+            String currentDesc = original.description;
+            String suffix = "";
+            if (currentDesc.contains("(Insurance Pending)")) suffix = " (Insurance Pending)";
+            else if (currentDesc.contains("(Insurance Repaid)")) suffix = " (Insurance Repaid)";
+            
+            final updatedExpense = original.copyWith(
+                description: "$newTitle$suffix",
+                amount: newAmount,
+            );
 
-         await _firestoreService.updateExpense(userId!, original.id, updateMap);
+            // Optimistic Update of Expense List
+            _expenses[originalIndex] = updatedExpense.copyWith(date: newDate); // Local update
+            notifyListeners(); // Ensure UI sees expense change
+
+            final updateMap = updatedExpense.toMap();
+            updateMap['date'] = newDate;
+
+            await _firestoreService.updateExpense(userId!, original.id, updateMap);
+         }
 
        } catch (e) {
          print("Could not find or update related expense during claim edit: $e");
@@ -1044,46 +1190,133 @@ class ExpenseProvider with ChangeNotifier {
   Future<void> settleInsuranceClaim(InsuranceClaimModel claim, double refundAmount, {String? date}) async {
     if (userId == null) return;
 
-    // 1. Create Refund Income
+    // 1. Generate Refund ID Synchronously
+    final refundId = _firestoreService.getNewExpenseId(userId!);
+    final refundDate = date ?? DateTime.now().toIso8601String();
+
     final incomeTx = ExpenseModel(
-      id: '',
+      id: refundId,
       amount: refundAmount,
       category: 'Insurance Refund', 
       description: "Refund for ${claim.title}",
-      date: date ?? DateTime.now().toIso8601String(),
+      date: refundDate,
       type: 'income',
     );
-    await addExpense(incomeTx);
 
-    // 2. Update Claim Status
+    // 2. Create Updated Claim Object (Paid)
+    final paidClaim = InsuranceClaimModel(
+      id: claim.id,
+      userId: claim.userId,
+      title: claim.title,
+      totalAmount: claim.totalAmount,
+      refundAmount: refundAmount,
+      date: claim.date,
+      status: 'paid',
+      relatedExpenseId: claim.relatedExpenseId,
+    );
+
+    // 3. Optimistic UI Update: Replace in lists & Notify
+    // Handle Main List
+    final index = _insuranceClaims.indexWhere((c) => c.id == claim.id);
+    if (index != -1) {
+      _insuranceClaims[index] = paidClaim;
+    }
+    // Handle Pending List (if it's still there)
+    final pendingIndex = _localPendingClaims.indexWhere((c) => c.id == claim.id);
+    if (pendingIndex != -1) {
+      _localPendingClaims[pendingIndex] = paidClaim;
+    }
+    
+    notifyListeners(); // UI updates to "History" instantly
+
+    // 4. Perform Firestore Writes (Background)
+    // Add Refund (using set for consistency)
+    await _firestoreService.setExpense(userId!, incomeTx);
+    
+    // Update Claim Status
     await _firestoreService.updateInsuranceClaim(userId!, claim.id, {
       'status': 'paid',
       'refundAmount': refundAmount,
     });
 
-    // 3. Update Original Expense Description (if linked)
+    // 5. Update Original Expense Description (if linked)
     if (claim.relatedExpenseId != null && claim.relatedExpenseId!.isNotEmpty) {
-       // Ideally we should fetch it first to preserve other fields, but we don't have a direct 'getExpense' in service easily exposed here 
-       // or we'd have to find it in _expenses list.
        try {
          final original = _expenses.firstWhere((e) => e.id == claim.relatedExpenseId);
-         // Replace "(Insurance Pending)" with "(Insurance Repaid)" or append if missing
          String baseDesc = original.description.replaceAll("(Insurance Pending)", "").trim();
          final newDesc = "$baseDesc (Insurance Repaid)";
          
-         final updatedMap = original.toMap();
-         updatedMap['description'] = newDesc; // Update description
-         
-         await _firestoreService.updateExpense(userId!, original.id, updatedMap);
+         await _firestoreService.updateExpense(userId!, original.id, {
+           'description': newDesc
+         });
        } catch (e) {
-         print("Could not find or update related expense: $e");
+         print("Could not find or update related expense during claim edit: $e");
        }
     }
   }
+
   
   Future<void> deleteInsuranceClaim(String claimId) async {
     if (userId == null) return;
+
+    // 1. Find the claim to get relatedExpenseId (Check both lists)
+    InsuranceClaimModel? claimToDelete;
+    
+    // Check local suppression
+    if (_localDeletedClaimIds.contains(claimId)) {
+        // Already marked for deletion
+        return; 
+    }
+    
+    // Check main list first
+    final index = _insuranceClaims.indexWhere((c) => c.id == claimId);
+    if (index != -1) {
+      claimToDelete = _insuranceClaims[index];
+      // Do NOT remove from _insuranceClaims directly since it is stream-managed.
+      // Instead, mark as locally deleted to suppress it.
+       _localDeletedClaimIds.add(claimId);
+    }
+    
+    // Check pending list
+    final pendingIndex = _localPendingClaims.indexWhere((c) => c.id == claimId);
+    if (pendingIndex != -1) {
+      claimToDelete = _localPendingClaims[pendingIndex];
+      _localPendingClaims.removeAt(pendingIndex);
+      // CRITICAL: Also mark as deleted, because the "Add" op might still be queued in Firestore.
+      // When it syncs, the stream will return this ID, and we must be ready to suppress it.
+      _localDeletedClaimIds.add(claimId);
+    }
+    
+    // Fallback: If found neither in memory nor pending, but user passed ID, add to suppression just in case
+    // (Optimization: Only if we suspect it might come from stream later)
+    if (claimToDelete == null) {
+       _localDeletedClaimIds.add(claimId);
+    }
+    
+    if (claimToDelete == null) {
+      // Fallback to ID delete if not found locally
+      await _firestoreService.deleteInsuranceClaim(userId!, claimId);
+      return;
+    }
+
+    // 2. Optimistic UI Update: Remove Linked Expense Locally (BEFORE AWAIT)
+    if (claimToDelete.relatedExpenseId != null && claimToDelete.relatedExpenseId!.isNotEmpty) {
+      final relatedId = claimToDelete.relatedExpenseId!;
+      // Optimistic Removal from Expenses List
+      _expenses.removeWhere((e) => e.id == relatedId);
+    } 
+    
+    notifyListeners(); // UI Updates Instantly (Both lists updated)
+
+    // 3. Perform Firestore Writes (Background)
+    
+    // Delete the Claim
     await _firestoreService.deleteInsuranceClaim(userId!, claimId);
+    
+    // Delete the Linked Expense
+    if (claimToDelete.relatedExpenseId != null && claimToDelete.relatedExpenseId!.isNotEmpty) {
+      await _firestoreService.deleteExpense(userId!, claimToDelete.relatedExpenseId!);
+    }
   }
 
 

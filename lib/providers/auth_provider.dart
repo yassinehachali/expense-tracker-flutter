@@ -6,7 +6,7 @@ import '../data/services/auth_service.dart';
 
 class AuthProvider with ChangeNotifier {
   final AuthService _authService = AuthService();
-  final GoogleSignIn _googleSignIn = GoogleSignIn();
+  // Removed eager initialization of GoogleSignIn to prevent Web crash (missing clientId)
   User? _user;
   bool _isLoading = true;
 
@@ -37,7 +37,8 @@ class AuthProvider with ChangeNotifier {
 
   Future<void> signInWithGoogle() async {
     try {
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+      final GoogleSignIn googleSignIn = GoogleSignIn();
+      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
       if (googleUser == null) return; // User canceled
 
       final GoogleSignInAuthentication googleAuth = await googleUser.authentication;

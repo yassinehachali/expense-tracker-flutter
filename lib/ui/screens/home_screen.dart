@@ -64,6 +64,9 @@ class _HomeScreenState extends State<HomeScreen> {
       // 3. Request Permissions
       final granted = await ns.requestPermissions();
       
+      // 3.1 Request Exact Alarm Permission (Android 12+)
+      await ns.checkAndroidScheduleExactAlarmPermission();
+      
       // 4. Schedule Daily Reminder
       // (If granted is null, it means Android <13, permission implied)
       if (granted != false) {
@@ -114,9 +117,15 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    // Listen to provider to rebuild when Language changes (via notifyListeners)
+    Provider.of<ExpenseProvider>(context);
 
     final List<Widget> screens = [
-      DashboardScreen(onViewAll: () => _onItemTapped(1)),
+      // Add Key to force rebuild if language changes, though Provider listen should suffice
+      DashboardScreen(
+        key: ValueKey(AppStrings.language), 
+        onViewAll: () => _onItemTapped(1)
+      ),
       const TransactionsScreen(),
       const SettingsScreen(),
     ];
