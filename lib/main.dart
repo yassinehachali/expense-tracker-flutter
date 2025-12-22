@@ -41,6 +41,9 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  // Initialize Language Settings (Load from Prefs)
+  await AppStrings.init();
   
   // Enable Offline Persistence
   FirebaseFirestore.instance.settings = const Settings(
@@ -92,24 +95,29 @@ class MyApp extends StatelessWidget {
       ],
       child: Consumer<ExpenseProvider>(
         builder: (context, provider, _) {
-          return MaterialApp(
-            title: AppStrings.appTitle,
-            debugShowCheckedModeBanner: false,
-            theme: AppTheme.lightTheme,
-            darkTheme: AppTheme.darkTheme,
-            themeMode: ThemeMode.system, 
-            locale: Locale(provider.settings?.language ?? 'en'),
-            supportedLocales: const [
-              Locale('en', ''),
-              Locale('fr', ''),
-              Locale('ar', ''),
-            ],
-            localizationsDelegates: const [
-              GlobalMaterialLocalizations.delegate,
-              GlobalWidgetsLocalizations.delegate,
-              GlobalCupertinoLocalizations.delegate,
-            ],
-            home: const AuthWrapper(),
+          return ValueListenableBuilder<String>(
+            valueListenable: AppStrings.languageNotifier,
+            builder: (context, lang, child) {
+              return MaterialApp(
+                title: AppStrings.appTitle,
+                debugShowCheckedModeBanner: false,
+                theme: AppTheme.lightTheme,
+                darkTheme: AppTheme.darkTheme,
+                themeMode: ThemeMode.system, 
+                locale: Locale(lang), // Use global persisted language
+                supportedLocales: const [
+                  Locale('en', ''),
+                  Locale('fr', ''),
+                  Locale('ar', ''),
+                ],
+                localizationsDelegates: const [
+                  GlobalMaterialLocalizations.delegate,
+                  GlobalWidgetsLocalizations.delegate,
+                  GlobalCupertinoLocalizations.delegate,
+                ],
+                home: const AuthWrapper(),
+              );
+            }
           );
         }
       ),

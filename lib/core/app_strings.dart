@@ -1,11 +1,23 @@
 import 'package:flutter/foundation.dart';
 
+import 'package:shared_preferences/shared_preferences.dart';
+
 class AppStrings {
   static String language = 'en';
+  static final ValueNotifier<String> languageNotifier = ValueNotifier<String>('en');
 
-  static void setLanguage(String lang) {
+  static Future<void> init() async {
+    final prefs = await SharedPreferences.getInstance();
+    language = prefs.getString('language') ?? 'en';
+    languageNotifier.value = language;
+  }
+
+  static Future<void> setLanguage(String lang) async {
     if (['en', 'fr', 'ar'].contains(lang)) {
       language = lang;
+      languageNotifier.value = lang;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('language', lang);
     }
   }
 
@@ -57,6 +69,7 @@ class AppStrings {
   static String get toSignupText => _t('toSignupText');
   static String get toLoginText => _t('toLoginText');
   static String get orText => _t('orText');
+  static String get signInWithGoogle => _t('signInWithGoogle');
 
   // Dashboard & Common
   static String get welcomeBack => _t('welcomeBack');
@@ -328,6 +341,7 @@ class AppStrings {
     'toSignupText': "Don't have an account? Sign Up",
     'toLoginText': "Already have an account? Login",
     'orText': 'OR',
+    'signInWithGoogle': 'Sign in with Google',
     'welcomeBack': 'Welcome back',
     'totalRemaining': 'Total Remaining',
     'income': 'Income',
@@ -536,6 +550,7 @@ class AppStrings {
     'toSignupText': "Vous n'avez pas de compte? Inscrivez-vous",
     'toLoginText': "Vous avez déjà un compte? Connectez-vous",
     'orText': 'OU',
+    'signInWithGoogle': 'Se connecter avec Google',
     'welcomeBack': 'Bon retour',
     'totalRemaining': 'Reste à dépenser',
     'income': 'Revenus',
@@ -744,6 +759,7 @@ class AppStrings {
     'toSignupText': 'ليس لديك حساب؟ سجل الآن',
     'toLoginText': 'لديك حساب بالفعل؟ سجل الدخول',
     'orText': 'أو',
+    'signInWithGoogle': 'تسجيل الدخول عبر Google',
     'welcomeBack': 'مرحباً بعودتك',
     'totalRemaining': 'المتبقي',
     'income': 'الدخل',

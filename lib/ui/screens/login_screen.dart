@@ -44,6 +44,8 @@ class _LoginScreenState extends State<LoginScreen> {
       final email = _emailController.text.trim();
       final password = _passwordController.text;
 
+      final selectedLanguage = AppStrings.language; // Capture BEFORE login
+
       if (!_isLogin) {
         if (password != _confirmPasswordController.text) {
           throw Exception(AppStrings.passwordMismatch);
@@ -56,12 +58,12 @@ class _LoginScreenState extends State<LoginScreen> {
         await auth.signIn(email, password);
       }
 
-      // Persist Selected Language
+      // Persist Selected Language (Use captured value to overwrite server default)
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-         // Using a new instance since we don't have direct access to provider's service here easily
-         // and creating one is cheap.
-         await FirestoreService().updateSettings(user.uid, {'language': AppStrings.language});
+         // Force update both local and server to match what the user selected on Login Screen
+         await AppStrings.setLanguage(selectedLanguage); 
+         await FirestoreService().updateSettings(user.uid, {'language': selectedLanguage});
       }
 
     } catch (e) {
@@ -92,8 +94,16 @@ class _LoginScreenState extends State<LoginScreen> {
        _error = null;
     });
     try {
+      final selectedLanguage = AppStrings.language; // Capture BEFORE login
+      
       await Provider.of<AuthProvider>(context, listen: false).signInWithGoogle();
-      // Auth wrapper handles navigation
+      
+      // Persist Selected Language for Google User
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+         await AppStrings.setLanguage(selectedLanguage); 
+         await FirestoreService().updateSettings(user.uid, {'language': selectedLanguage});
+      }
     } catch (e) {
       if (mounted) setState(() => _error = e.toString().replaceAll("Exception: ", ""));
     } finally {
@@ -135,47 +145,7 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         child: Stack(
           children: [
-            // Language Switcher (Top Right)
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 16,
-              right: 24,
-              child: PopupMenuButton<String>(
-                onSelected: (lang) {
-                   setState(() {
-                      AppStrings.setLanguage(lang);
-                   });
-                },
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                color: isDark ? const Color(0xFF1E293B) : Colors.white,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: isDark ? Colors.black26 : Colors.white.withOpacity(0.5),
-                    borderRadius: BorderRadius.circular(30),
-                    border: Border.all(color: Colors.white.withOpacity(0.1)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(LucideIcons.globe, size: 18, color: AppTheme.primary),
-                      const SizedBox(width: 8),
-                      Text(
-                         AppStrings.language.toUpperCase(),
-                         style: GoogleFonts.outfit(
-                           color: isDark ? Colors.white : const Color(0xFF1E293B),
-                           fontWeight: FontWeight.w600,
-                         ),
-                      ),
-                    ],
-                  ),
-                ),
-                itemBuilder: (context) => [
-                  _buildLangItem('en', "English"),
-                  _buildLangItem('fr', "Français"),
-                  _buildLangItem('ar', "العربية"),
-                ],
-              ),
-            ),
+
 
             SafeArea(
               child: Center(
@@ -358,9 +328,14 @@ class _LoginScreenState extends State<LoginScreen> {
                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)), // Standard Capsule shape
                                  padding: EdgeInsets.zero,
                                ),
-                               icon: const Icon(LucideIcons.chrome, size: 20, color: Colors.black87),
+                               icon: Image.network(
+                                 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/240px-Google_%22G%22_logo.svg.png',
+                                 height: 24,
+                                 width: 24,
+                                 errorBuilder: (context, error, stackTrace) => const Icon(LucideIcons.chrome, size: 24, color: Colors.black87),
+                               ),
                                label: Text(
-                                 "Sign in with Google",
+                                 AppStrings.signInWithGoogle,
                                  style: GoogleFonts.roboto( // Standard Google Font
                                    fontSize: 16,
                                    color: Colors.black87,
@@ -416,6 +391,47 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ),
+            // Language Switcher (Top Right)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 16,
+              right: 24,
+              child: PopupMenuButton<String>(
+                onSelected: (lang) {
+                   setState(() {
+                      AppStrings.setLanguage(lang);
+                   });
+                },
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.black26 : Colors.white.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(color: Colors.white.withOpacity(0.1)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(LucideIcons.globe, size: 18, color: AppTheme.primary),
+                      const SizedBox(width: 8),
+                      Text(
+                         AppStrings.language.toUpperCase(),
+                         style: GoogleFonts.outfit(
+                           color: isDark ? Colors.white : const Color(0xFF1E293B),
+                           fontWeight: FontWeight.w600,
+                         ),
+                      ),
+                    ],
+                  ),
+                ),
+                itemBuilder: (context) => [
+                  _buildLangItem('en', "English"),
+                  _buildLangItem('fr', "Français"),
+                  _buildLangItem('ar', "العربية"),
+                ],
+              ),
+            ),
       ],
     ),
       ),

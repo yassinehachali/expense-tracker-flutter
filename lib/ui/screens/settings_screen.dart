@@ -141,9 +141,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 title: Text(AppStrings.checkUpdatesOption),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () {
-                  // Navigate to updates or check updates
-                  // For now assuming it shows a dialog or similar
-                  UpdateService.checkAndNotify(manualCheck: true, context: context);
+                  _checkForUpdates(context);
                 },
               ),
 
