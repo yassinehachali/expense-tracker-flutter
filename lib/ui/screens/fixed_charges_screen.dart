@@ -48,6 +48,35 @@ class FixedChargesScreen extends StatelessWidget {
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                // Total Summary Card
+                GlassContainer(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      children: [
+                        Text(
+                          AppStrings.totalFixedCharges,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                           Utils.formatCurrency(charges.fold(0.0, (sum, item) => sum + item.amount)),
+                           style: TextStyle(
+                             fontSize: 32,
+                             fontWeight: FontWeight.bold,
+                             color: theme.colorScheme.primary,
+                           ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+
                 if (autoCharges.isNotEmpty) ...[
                   _buildSectionHeader(AppStrings.autoApply),
                   ...autoCharges.map((c) => _ChargeTile(charge: c)),

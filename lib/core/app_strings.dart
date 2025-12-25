@@ -204,6 +204,7 @@ class AppStrings {
   static String get addFixedCharge => _t('addFixedCharge');
   static String get autoApply => _t('autoApply');
   static String get waitForDueDate => _t('waitForDueDate');
+  static String get totalFixedCharges => _t('totalFixedCharges');
 
   // Insurance (Added Late)
   static String get insurance => _t('insurance');
@@ -441,6 +442,7 @@ class AppStrings {
     'loanReturned': 'Repaid',
     'returnedLabel': 'Returned: ',
     'fixedCharges': 'Fixed Charges',
+    'totalFixedCharges': 'Total Fixed Charges',
     'fixedChargesSubtitle': 'Manage rent, subscriptions, bills',
     'noFixedCharges': 'No fixed charges yet',
     'addFixedCharge': 'Add Charge',
@@ -650,6 +652,7 @@ class AppStrings {
     'loanReturned': 'Remboursé',
     'returnedLabel': 'Retourné: ',
     'fixedCharges': 'Charges Fixes',
+    'totalFixedCharges': 'Total des Charges',
     'fixedChargesSubtitle': 'Loyer, abonnements, factures',
     'noFixedCharges': 'Aucune charge fixe',
     'addFixedCharge': 'Ajouter',
@@ -859,6 +862,7 @@ class AppStrings {
     'loanReturned': 'تم السداد',
     'returnedLabel': 'المرتجع: ',
     'fixedCharges': 'مصروفات ثابتة',
+    'totalFixedCharges': 'إجمالي المصروفات الثابتة',
     'fixedChargesSubtitle': 'إيجار، اشتراكات، فواتير',
     'noFixedCharges': 'لا توجد مصروفات ثابتة',
     'addFixedCharge': 'إضافة',

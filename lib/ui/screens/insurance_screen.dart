@@ -444,36 +444,52 @@ class _ClaimTile extends StatelessWidget {
                 ],
                 
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    TextButton.icon(
-                      icon: const Icon(LucideIcons.trash2, size: 16),
-                      label: Text(AppStrings.delete),
-                      style: TextButton.styleFrom(foregroundColor: Colors.red),
-                      onPressed: () => _confirmDelete(context),
+                    Expanded(
+                      child: TextButton.icon(
+                        icon: const Icon(LucideIcons.trash2, size: 16),
+                        label: Text(AppStrings.delete),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.red,
+                          // Ensure tap target fills the expanded area
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: () => _confirmDelete(context),
+                      ),
                     ),
                     if (isPending) ...[
                       const SizedBox(width: 8),
-                      TextButton.icon(
-                        icon: const Icon(LucideIcons.pencil, size: 16),
-                        label: Text(AppStrings.editClaim),
-                        style: TextButton.styleFrom(foregroundColor: Colors.blue),
-                        onPressed: () => InsuranceScreen.showEditDialog(context, claim),
+                      Expanded(
+                        child: TextButton.icon(
+                          icon: const Icon(LucideIcons.pencil, size: 16),
+                          label: Text(AppStrings.editClaim),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.blue,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          onPressed: () => InsuranceScreen.showEditDialog(context, claim),
+                        ),
                       ),
                     ],
-                     const Spacer(),
-                    if (isPending)
-                      ElevatedButton.icon(
-                        icon: const Icon(LucideIcons.checkCheck, size: 16),
-                        label: Text(AppStrings.settleRefund),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green, 
-                          foregroundColor: Colors.white
-                        ),
-                        onPressed: () => _showSettleDialog(context),
-                      ),
                   ],
                 ),
+                if (isPending) ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      icon: const Icon(LucideIcons.checkCheck, size: 16),
+                      label: Text(AppStrings.settleRefund),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green, 
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: () => _showSettleDialog(context),
+                    ),
+                  ),
+                ],
               ],
             ),
           )
