@@ -5,9 +5,25 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'app_strings.dart';
 
 class Utils {
+  static String _currencySymbol = 'DH'; // Default
+
+  static void setCurrency(String code) {
+    switch (code) {
+      case 'EUR': _currencySymbol = '\u20AC'; break; // Euro
+      case 'USD': _currencySymbol = '\$'; break; // Dollar
+      case 'MAD': 
+      default: _currencySymbol = 'DH'; break;
+    }
+  }
+
+  static String get currencySymbol => _currencySymbol;
+
   static String formatCurrency(double amount) {
     final formatter = NumberFormat.decimalPattern('en_US');
-    return '${formatter.format(amount)}\u00A0DH';
+    if (_currencySymbol == '\$') {
+       return '$_currencySymbol${formatter.format(amount)}'; // $ is usually prefix
+    }
+    return '${formatter.format(amount)}\u00A0$_currencySymbol';
   }
 
   static String formatDate(DateTime date) {

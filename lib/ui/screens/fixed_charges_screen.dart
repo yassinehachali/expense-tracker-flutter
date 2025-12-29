@@ -7,6 +7,7 @@ import '../../core/app_strings.dart';
 import '../../data/models/fixed_charge_model.dart';
 import '../../providers/expense_provider.dart';
 import '../widgets/glass_container.dart';
+import '../widgets/category_selector.dart'; // Added Import
 
 class FixedChargesScreen extends StatelessWidget {
   const FixedChargesScreen({super.key});
@@ -256,41 +257,44 @@ class FixedChargesScreen extends StatelessWidget {
                   const SizedBox(height: 16),
                   TextField(
                     controller: amountCtrl,
-                    decoration: InputDecoration(labelText: AppStrings.amountLabel, prefixText: "DH "),
+                    decoration: InputDecoration(labelText: AppStrings.amountLabel, prefixText: "${Utils.currencySymbol} "),
                     keyboardType: TextInputType.number,
                   ),
                   const SizedBox(height: 16),
                   // Simple Category Dropdown for now (can enhance to use CategoryModel list)
                   // Using Provider to get real categories
                   // Category Dropdown
+                  // Category Selector
                   Consumer<ExpenseProvider>(
                     builder: (context, p, _) {
                       final cats = p.categories;
                       
                       // Safety: Ensure valid category selection
-                      String dropdownValue = selectedCategory;
-                      bool matchFound = cats.any((c) => c.name == selectedCategory);
+                      String currentSelection = selectedCategory;
+                      bool matchFound = cats.any((c) => c.name == currentSelection);
                       
+                      // Fallback logic if selection invalid
                       if (!matchFound) {
-                        // Fallback logic
                         if (cats.any((c) => c.name == 'Others')) {
-                          dropdownValue = 'Others';
+                          currentSelection = 'Others';
                         } else if (cats.isNotEmpty) {
-                          dropdownValue = cats.first.name;
-                        } else {
-                          dropdownValue = selectedCategory; // Hopeless, but keeps original behavior
+                          currentSelection = cats.first.name;
                         }
                       }
 
-                      return DropdownButtonFormField<String>(
-                        value: dropdownValue,
-                        decoration: InputDecoration(labelText: AppStrings.categoryLabel),
-                        items: cats.map((c) => DropdownMenuItem(value: c.name, child: Text(c.name))).toList(),
-                        onChanged: (val) {
-                          if (val != null) {
-                             setState(() => selectedCategory = val);
-                          }
-                        },
+                      return Column(
+                         crossAxisAlignment: CrossAxisAlignment.start,
+                         children: [
+                           Text(AppStrings.categoryLabel, style: TextStyle(color: Theme.of(context).hintColor)), // Match label style
+                           const SizedBox(height: 8),
+                           CategorySelector(
+                             categories: cats,
+                             selectedCategory: currentSelection,
+                             onCategorySelected: (val) {
+                               setState(() => selectedCategory = val);
+                             },
+                           ),
+                         ],
                       );
                     },
                   ),

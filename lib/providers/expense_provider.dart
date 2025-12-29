@@ -6,6 +6,7 @@ import '../data/models/category_model.dart';
 import '../data/models/user_settings_model.dart';
 import '../data/models/fixed_charge_model.dart';
 import '../data/models/insurance_claim_model.dart';
+import '../data/models/beneficiary_model.dart';
 import '../data/services/firestore_service.dart';
 import '../core/constants.dart';
 import '../core/utils.dart';
@@ -22,6 +23,7 @@ class ExpenseProvider with ChangeNotifier {
   List<CategoryModel> _categories = [];
   List<FixedChargeModel> _fixedCharges = [];
   List<InsuranceClaimModel> _insuranceClaims = [];
+  List<BeneficiaryModel> _beneficiaries = [];
   final List<InsuranceClaimModel> _localPendingClaims = []; // Store offline creations here
   final Set<String> _localDeletedClaimIds = {}; // Store pending deletes to suppress "Zombie" reappearance
 
@@ -40,6 +42,7 @@ class ExpenseProvider with ChangeNotifier {
   StreamSubscription? _categoriesSub;
   StreamSubscription? _fixedChargesSub;
   StreamSubscription? _insuranceClaimsSub;
+  StreamSubscription? _beneficiariesSub;
 
   List<InsuranceClaimModel> get insuranceClaims {
     // Merge Pending + Stream (Prefer Stream if ID exists)
@@ -57,6 +60,7 @@ class ExpenseProvider with ChangeNotifier {
 
   List<ExpenseModel> get expenses => _expenses;
   List<FixedChargeModel> get fixedCharges => _fixedCharges;
+  List<BeneficiaryModel> get beneficiaries => _beneficiaries;
   List<CategoryModel> get categories {
     final defaults = DEFAULT_CATEGORIES.map((c) => CategoryModel.fromMap(c)).toList();
     final Map<String, CategoryModel> uniqueCategories = {};
@@ -163,6 +167,9 @@ class ExpenseProvider with ChangeNotifier {
         _firestoreService.updateSettings(uid, {'language': AppStrings.language});
       }
 
+      // Update App Currency
+       Utils.setCurrency(_settings.currency ?? 'MAD'); // Default to MAD if null
+
       // Force refresh of any derived data
       notifyListeners();
     }, onError: (e) => print("Error loading settings: $e"));
@@ -190,6 +197,11 @@ class ExpenseProvider with ChangeNotifier {
       
       notifyListeners();
     }, onError: (e) => print("Error loading insurance claims: $e"));
+    
+    _beneficiariesSub = _firestoreService.getBeneficiaries(uid).listen((data) {
+      _beneficiaries = data;
+      notifyListeners();
+    }, onError: (e) => print("Error loading beneficiaries: $e"));
   }
   
   void _cancelSubscriptions() {
@@ -198,12 +210,19 @@ class ExpenseProvider with ChangeNotifier {
     _categoriesSub?.cancel();
     _fixedChargesSub?.cancel();
     _insuranceClaimsSub?.cancel();
+    _beneficiariesSub?.cancel();
   }
 
   @override
   void dispose() {
     _cancelSubscriptions();
     super.dispose();
+  }
+
+  Future<void> updateCurrency(String currencyCode) async {
+    if (userId == null) return;
+    await _firestoreService.updateSettings(userId!, {'currency': currencyCode});
+    // The stream will trigger and update Utils via _settingsSub
   }
 
   void setMonth(int month) {
@@ -390,6 +409,30 @@ class ExpenseProvider with ChangeNotifier {
     
     return _calculateMonthlyBalance(prevYear, prevMonth);
   }
+
+  double get totalIncome {
+    // Only Income + Borrowing (Cash In)
+    // Rollover is separate concept, usually added to balance directly or treated as income.
+    // Here we sum 'income' + 'borrow' types.
+    // EXCLUDE legacy transactions from Borrowing.
+    
+    // Note: Borrowings are "Cash In" so they increase wallet balance.
+    return _expenses
+      .where((e) => isInCurrentCycle(DateTime.parse(e.date)))
+      .where((e) => e.type == 'income' || (e.type == 'borrow' && !e.excludeFromBalance))
+      .fold(0.0, (sum, e) => sum + e.amount);
+  }
+
+  double get totalExpenses {
+    // Expense + Lending (Cash Out)
+    // EXCLUDE legacy transactions from Lending.
+    
+    // Note: Lending is "Cash Out" so it decreases wallet balance.
+    return _expenses
+      .where((e) => isInCurrentCycle(DateTime.parse(e.date)))
+      .where((e) => e.type == 'expense' || (e.type == 'loan' && !e.excludeFromBalance))
+      .fold(0.0, (sum, e) => sum + e.amount);
+  }     
 
   Map<String, double> get dashboardStats {
     final cycleExpenses = _expenses.where((exp) {
@@ -666,6 +709,83 @@ class ExpenseProvider with ChangeNotifier {
     for (var exp in expensesToDelete) {
       print("Deleting cleanup expense ${exp.id} for fixed charge $chargeId");
       await deleteExpense(exp.id);
+    }
+  }
+
+  // --- Beneficiaries Logic ---
+
+  Future<void> addBeneficiary(BeneficiaryModel beneficiary) async {
+    if (userId == null) return;
+    
+    // Duplicate Check (Case-Insensitive)
+    final normalize = (String s) => s.trim().toLowerCase();
+    if (_beneficiaries.any((b) => normalize(b.name) == normalize(beneficiary.name))) {
+       throw Exception("Beneficiary '${beneficiary.name}' already exists.");
+    }
+
+    await _firestoreService.addBeneficiary(userId!, beneficiary);
+  }
+
+  Future<void> deleteBeneficiary(String beneficiaryId) async {
+    if (userId == null) return;
+    await _firestoreService.deleteBeneficiary(userId!, beneficiaryId);
+  }
+
+  Future<void> migrateCurrentLoansToBeneficiaries() async {
+    if (userId == null) return;
+    
+    final normalize = (String s) => s.trim().toLowerCase();
+    final existingNames = _beneficiaries.map((b) => normalize(b.name)).toSet();
+    final Set<String> newNames = {};
+
+    // Scan all expenses (borrow/loan)
+    for (var exp in _expenses) {
+       if (exp.type == 'loan' || exp.type == 'borrow') {
+          // loanee field or fallback to description (legacy)
+          String? name = exp.loanee;
+          if (name == null || name.isEmpty) {
+             // Heuristic: If description is short and looks like a name? 
+             // Or just take description if type is loan/borrow.
+             // User said: "names that they lended money to or borrowed money to"
+             name = exp.description;
+          }
+          
+          if (name.isNotEmpty) {
+             final norm = normalize(name);
+             if (!existingNames.contains(norm) && !newNames.contains(norm)) {
+                newNames.add(norm);
+                // We add the original casing found first
+                final newPerson = BeneficiaryModel(
+                  id: DateTime.now().millisecondsSinceEpoch.toString() + newNames.length.toString(), // unique seed
+                  name: name.trim(),
+                  createdAt: DateTime.now().toIso8601String()
+                );
+                // Add sequentially to avoid race conditions or heavy batch? 
+                // Firestore write is async. Let's await.
+                try {
+                  await _firestoreService.addBeneficiary(userId!, newPerson);
+                  // Update local set to prevent adding 'ALICE' then 'Alice' in same loop if we didn't await
+                  // But we are awaiting, so getBeneficiaries stream updates later. 
+                  // Ideally we trust 'newNames' set for this loop duration.
+                } catch (e) {
+                  print("Error migrating $name: $e");
+                }
+             }
+          }
+
+          // FIX: Ensure category is correct (Legacy might allow 'Housing' or 'Default' > fix to Lending/Borrowing)
+          // We only fix if it's NOT already correct.
+          final correctCategory = exp.type == 'loan' ? 'Lending' : 'Borrowing';
+          if (exp.category != correctCategory) {
+             // We need to update this expense record
+             final updatedExp = exp.copyWith(category: correctCategory);
+             try {
+                await updateExpense(updatedExp); 
+             } catch (e) {
+                print("Error correcting category for ${exp.id}: $e");
+             }
+          }
+       }
     }
   }
 

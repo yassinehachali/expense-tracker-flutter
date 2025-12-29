@@ -6,8 +6,10 @@ import '../../core/app_strings.dart';
 import '../../core/utils.dart';
 import '../../providers/expense_provider.dart';
 import '../../data/models/expense_model.dart';
+import '../../data/models/beneficiary_model.dart';
 import '../widgets/glass_container.dart';
 import 'add_expense_screen.dart';
+import '../widgets/beneficiaries_tab.dart'; // Added Import
 
 class LoansManagerScreen extends StatefulWidget {
   const LoansManagerScreen({super.key});
@@ -22,7 +24,17 @@ class _LoansManagerScreenState extends State<LoansManagerScreen> with SingleTick
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging) {
+        setState(() {});
+      }
+    });
+
+    // Trigger migration of legacy loan names
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<ExpenseProvider>(context, listen: false).migrateCurrentLoansToBeneficiaries();
+    });
   }
 
   @override
@@ -33,10 +45,6 @@ class _LoansManagerScreenState extends State<LoansManagerScreen> with SingleTick
 
   @override
   Widget build(BuildContext context) {
-    // Determine language-specific tab order or keeping fixed?
-    // Fixed: Tab 0 = Lendings (I Lent), Tab 1 = Debts (I Borrowed)
-    // Adjust strings accordingly.
-    
     return Scaffold(
       appBar: AppBar(
         title: Text(AppStrings.loansManager),
@@ -46,6 +54,7 @@ class _LoansManagerScreenState extends State<LoansManagerScreen> with SingleTick
           tabs: [
             Tab(text: AppStrings.filterLoans, icon: const Icon(LucideIcons.arrowUpRight)), 
             Tab(text: AppStrings.borrow, icon: const Icon(LucideIcons.arrowDownLeft)), 
+            Tab(text: "Beneficiaries", icon: const Icon(LucideIcons.users)), 
           ],
         ),
       ),
@@ -69,21 +78,28 @@ class _LoansManagerScreenState extends State<LoansManagerScreen> with SingleTick
                 provider: provider,
                 emptyMessage: AppStrings.noDebtsMessage,
               ),
+              const BeneficiariesTab(),
             ],
           );
         },
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
-           final type = _tabController.index == 0 ? 'loan' : 'borrow';
-           _showAddDialog(context, type);
+            final type = _tabController.index == 0 ? 'loan' : 'borrow';
+            if (_tabController.index == 2) {
+               _showAddBeneficiaryDialog(context);
+            } else {
+               _showAddDialog(context, type);
+            }
         },
-        label: Text(AppStrings.addTransaction),
+        label: Text(_tabController.index == 2 ? "Add Beneficiary" : AppStrings.addTransaction),
         icon: const Icon(LucideIcons.plus),
-        backgroundColor: _tabController.index == 0 ? Colors.indigo : Colors.orange,
+        backgroundColor: _tabController.index == 2 ? Colors.blueGrey : (_tabController.index == 0 ? Colors.indigo : Colors.orange),
       ),
     );
   }
+
+
 
   void _showAddDialog(BuildContext context, String type) {
      Navigator.push(
@@ -92,6 +108,48 @@ class _LoansManagerScreenState extends State<LoansManagerScreen> with SingleTick
          builder: (_) => AddExpenseScreen(initialType: type) 
        )
      );
+  }
+
+  void _showAddBeneficiaryDialog(BuildContext context) {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Add New Person"),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(labelText: "Name", hintText: "e.g. Alice"),
+          textCapitalization: TextCapitalization.sentences,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(AppStrings.cancel)),
+          ElevatedButton(
+            onPressed: () async {
+               final name = controller.text.trim();
+               if (name.isNotEmpty) {
+                  final newPerson = BeneficiaryModel(
+                    id: DateTime.now().millisecondsSinceEpoch.toString(),
+                    name: name,
+                    createdAt: DateTime.now().toIso8601String()
+                  );
+                  
+                  try {
+                    await Provider.of<ExpenseProvider>(context, listen: false).addBeneficiary(newPerson);
+                    if (ctx.mounted) Navigator.pop(ctx);
+                  } catch (e) {
+                    if (ctx.mounted) {
+                       ScaffoldMessenger.of(context).showSnackBar(
+                         SnackBar(content: Text(e.toString().replaceAll("Exception: ", "")), backgroundColor: Colors.red)
+                       );
+                    }
+                  }
+               }
+            }, 
+            child: const Text("Add")
+          )
+        ],
+      )
+    );
   }
 }
 
@@ -316,7 +374,7 @@ class _LoansList extends StatelessWidget {
                   labelText: isDebts ? AppStrings.amountLabel : AppStrings.refundAmountReceivedLabel, // or similar
                   hintText: "0.00",
                   border: const OutlineInputBorder(),
-                  prefixIcon: const Icon(Icons.attach_money),
+                  prefixText: "${Utils.currencySymbol} ",
                 ),
              ),
           ],

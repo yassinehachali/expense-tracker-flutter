@@ -4,6 +4,7 @@ import '../models/category_model.dart';
 import '../models/category_model.dart';
 import '../models/user_settings_model.dart';
 import '../models/fixed_charge_model.dart';
+import '../models/beneficiary_model.dart';
 import '../models/insurance_claim_model.dart';
 
 class FirestoreService {
@@ -260,7 +261,28 @@ class FirestoreService {
     await _getInsuranceClaimsRef(uid).doc(claimId).update(data);
   }
 
-  Future<void> deleteInsuranceClaim(String uid, String claimId) async {
-    await _getInsuranceClaimsRef(uid).doc(claimId).delete();
+  Future<void> deleteInsuranceClaim(String userId, String claimId) async {
+    await _db.collection('users').doc(userId).collection('insurance_claims').doc(claimId).delete();
+  }
+
+  // ---------------------------------------------------------------------------
+  // BENEFICIARIES
+  // ---------------------------------------------------------------------------
+
+  Stream<List<BeneficiaryModel>> getBeneficiaries(String userId) {
+    return _db.collection('users').doc(userId).collection('beneficiaries')
+      .orderBy('name')
+      .snapshots()
+      .map((snapshot) {
+        return snapshot.docs.map((doc) => BeneficiaryModel.fromMap(doc.data(), doc.id)).toList();
+      });
+  }
+
+  Future<void> addBeneficiary(String userId, BeneficiaryModel beneficiary) async {
+     await _db.collection('users').doc(userId).collection('beneficiaries').doc(beneficiary.id).set(beneficiary.toMap());
+  }
+
+  Future<void> deleteBeneficiary(String userId, String beneficiaryId) async {
+    await _db.collection('users').doc(userId).collection('beneficiaries').doc(beneficiaryId).delete();
   }
 }

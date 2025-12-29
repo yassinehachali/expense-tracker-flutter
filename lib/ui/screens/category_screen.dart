@@ -12,7 +12,8 @@ import '../../core/constants.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 class CategoryScreen extends StatefulWidget {
-  const CategoryScreen({super.key});
+  final bool isSelectionMode;
+  const CategoryScreen({super.key, this.isSelectionMode = false});
 
   @override
   State<CategoryScreen> createState() => _CategoryScreenState();
@@ -217,7 +218,12 @@ class _CategoryScreenState extends State<CategoryScreen> {
                              
                              await _firestoreService.addCategory(uid, newCat);
                              _nameController.clear();
-                             if (context.mounted) FocusScope.of(context).unfocus();
+                             if (context.mounted) {
+                               FocusScope.of(context).unfocus();
+                               if (widget.isSelectionMode) {
+                                  Navigator.pop(context, newCat.name);
+                               }
+                             }
                            },
                            style: ElevatedButton.styleFrom(
                              backgroundColor: theme.primaryColor,

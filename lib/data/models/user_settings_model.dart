@@ -36,6 +36,7 @@ class UserSettingsModel {
   final List<String> ignoredRollovers; // Key: "yyyy-MM" where rollover is disabled
   final List<String> acceptedRollovers; // Key: "yyyy-MM" where rollover is explicitly accepted
   final String? language;
+  final String? currency; // Added currency field
 
   UserSettingsModel({
     this.defaultSalary = 0.0, 
@@ -44,6 +45,7 @@ class UserSettingsModel {
     this.ignoredRollovers = const [],
     this.acceptedRollovers = const [],
     this.language,
+    this.currency,
   });
 
   factory UserSettingsModel.fromMap(Map<String, dynamic> map) {
@@ -71,6 +73,7 @@ class UserSettingsModel {
       ignoredRollovers: ignored,
       acceptedRollovers: accepted,
       language: map['language'], // Allow null
+      currency: map['currency'], // Added
     );
   }
   
@@ -83,6 +86,7 @@ class UserSettingsModel {
        'ignoredRollovers': ignoredRollovers,
        'acceptedRollovers': acceptedRollovers,
        'language': language,
+       'currency': currency,
      };
   }
 }

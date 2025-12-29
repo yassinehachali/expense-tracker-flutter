@@ -4,13 +4,18 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../data/models/expense_model.dart';
-import '../../data/models/category_model.dart'; // Added Import
+import '../../data/models/category_model.dart';
+import '../../data/models/beneficiary_model.dart'; // Added Import
 import '../../providers/auth_provider.dart';
 import '../../providers/expense_provider.dart';
 import '../../core/constants.dart';
 import '../../core/app_strings.dart';
+import '../../core/utils.dart';
 import '../widgets/glass_container.dart';
 import '../widgets/category_icon.dart';
+import '../widgets/category_selector.dart';
+import '../widgets/beneficiary_selector.dart'; // Added Import
+import '../screens/category_screen.dart'; // Added Import
 
 class AddExpenseScreen extends StatefulWidget {
   final ExpenseModel? expenseToEdit;
@@ -32,6 +37,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   String _selectedCategory = DEFAULT_CATEGORIES[0]['name'] as String;
   
   bool _isLoading = false;
+  bool _excludeFromBalance = false;
 
   @override
   void initState() {
@@ -43,6 +49,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       _selectedType = e.type;
       _selectedDate = DateTime.parse(e.date);
       _selectedCategory = e.category; 
+      _excludeFromBalance = e.excludeFromBalance;
     } else {
       if (widget.initialType != null) _selectedType = widget.initialType!;
       if (widget.initialDate != null) _selectedDate = widget.initialDate!;
@@ -78,7 +85,9 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         id: widget.expenseToEdit?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
         // userId: userId, // Removed
         amount: amount,
-        category: _selectedCategory,
+        // Fix: For Loan/Borrow, ignore selectedCategory (default) and use explicit type label
+        category: _selectedType == 'loan' ? 'Lending' : 
+                  (_selectedType == 'borrow' ? 'Borrowing' : _selectedCategory),
         date: _selectedDate.toIso8601String(),
         description: _descriptionController.text, 
         type: _selectedType,
@@ -89,7 +98,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         returnedAmount: widget.expenseToEdit?.returnedAmount ?? 0.0,
         relatedLoanId: widget.expenseToEdit?.relatedLoanId,
         originChargeId: widget.expenseToEdit?.originChargeId,
-        excludeFromBalance: widget.expenseToEdit?.excludeFromBalance ?? false,
+        excludeFromBalance: _excludeFromBalance,
       );
 
       // Assume add/update return void/Future<void> based on previous error
@@ -180,21 +189,87 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
               label: AppStrings.amountLabel,
               hint: AppStrings.amountHint,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              icon: LucideIcons.dollarSign,
+              prefixText: Utils.currencySymbol,
             ),
             
             const SizedBox(height: 16),
             
-            // Description / Loan To Input
-            _CustomTextField(
-              controller: _descriptionController,
-              label: (_selectedType == 'loan' || _selectedType == 'borrow') ? 
-                      (_selectedType == 'borrow' ? AppStrings.descLabelLoan : AppStrings.descLabelLoan) 
-                      : AppStrings.descLabel,
-              hint: _selectedType == 'loan' ? AppStrings.descHintLoan : 
-                    (_selectedType == 'borrow' ? AppStrings.descHintBorrow : AppStrings.descHint),
-              icon: LucideIcons.fileText,
-            ),
+            // Legacy Transaction Option (Exclude from Balance)
+            if (_selectedType == 'loan' || _selectedType == 'borrow')
+               Container(
+                 margin: const EdgeInsets.only(bottom: 16),
+                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                 decoration: BoxDecoration(
+                   color: theme.cardColor,
+                   borderRadius: BorderRadius.circular(12),
+                   border: Border.all(color: theme.dividerColor),
+                 ),
+                 child: SwitchListTile(
+                   contentPadding: EdgeInsets.zero,
+                   title: Text(AppStrings.legacyTransactionLabel ?? "Old Transaction (Pre-App)"),
+                   subtitle: Text(AppStrings.legacyTransactionHint ?? "Don't affect current balance", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                   value: _excludeFromBalance,
+                   onChanged: (val) => setState(() => _excludeFromBalance = val),
+                   activeColor: const Color(0xFF6366f1),
+                 ),
+               ),
+            
+            // Description Input (OR Beneficiary Selector for Loans)
+            if (_selectedType == 'loan' || _selectedType == 'borrow') ...[
+               Consumer<ExpenseProvider>(
+                 builder: (context, provider, child) {
+                    final persons = provider.beneficiaries;
+                    // If we are editing, we might have a name in _descriptionController that matches a person
+                    // or it might be raw text.
+                    // For now, let's keep it simple: If Type is Loan, show Selector AND Text Field (optional comment?)
+                    // Or replaced Text Field with Selector entirely?
+                    // User said: "choose from the list".
+                    // Let's replace the Description field with the Selector for the Name, and maybe add a separate "Note" field later if needed.
+                    // But effectively, loanee/description IS the name.
+                    
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(_selectedType == 'borrow' ? "Lender" : "Borrower", style: const TextStyle(fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 8),
+                        BeneficiarySelector(
+                          beneficiaries: persons,
+                          selectedName: _descriptionController.text,
+                          onSelected: (name) {
+                             setState(() => _descriptionController.text = name);
+                          },
+                          onAddNew: (name) async {
+                             // Quick add
+                             if (name.isNotEmpty) {
+                                final newPerson = BeneficiaryModel(
+                                  id: DateTime.now().millisecondsSinceEpoch.toString(),
+                                  name: name,
+                                  createdAt: DateTime.now().toIso8601String()
+                                );
+                                
+                                try {
+                                  await provider.addBeneficiary(newPerson);
+                                  setState(() => _descriptionController.text = name);
+                                } catch (e) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                     SnackBar(content: Text(e.toString().replaceAll("Exception: ", "")), backgroundColor: Colors.red)
+                                  );
+                                }
+                             }
+                          },
+                        ),
+                      ],
+                    );
+                 }
+               )
+            ] else ...[
+                _CustomTextField(
+                  controller: _descriptionController,
+                  label: AppStrings.descLabel,
+                  hint: AppStrings.descHint,
+                  icon: LucideIcons.fileText,
+                ),
+            ],
 
             const SizedBox(height: 16),
 
@@ -210,39 +285,41 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                      // Just show valid one if possible.
                   }
                   
-                  return Column(
+                    return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(AppStrings.categoryLabel, style: const TextStyle(fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: theme.cardColor,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: theme.dividerColor),
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: currentCatExists ? _selectedCategory : (categories.isNotEmpty ? categories.first.name : null),
-                            isExpanded: true,
-                            items: categories.map((cat) {
-                               return DropdownMenuItem<String>(
-                                 value: cat.name,
-                                 child: Row(
-                                   children: [
-                                     CategoryIcon(iconKey: cat.icon, size: 18, color: theme.iconTheme.color),
-                                     const SizedBox(width: 12),
-                                     Text(AppStrings.getCategoryName(cat.name)),
-                                   ],
-                                 ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(AppStrings.categoryLabel, style: const TextStyle(fontWeight: FontWeight.bold)),
+                          TextButton.icon(
+                            icon: const Icon(LucideIcons.plusCircle, size: 16),
+                            label: Text(AppStrings.addNewCategory, style: const TextStyle(fontSize: 12)),
+                            style: TextButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              minimumSize: const Size(0, 0),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              // Optional: Customize color if needed, uses theme default primary usually
+                            ),
+                            onPressed: () async {
+                               final newCategory = await Navigator.push<String>(
+                                 context,
+                                 MaterialPageRoute(builder: (_) => const CategoryScreen(isSelectionMode: true)),
                                );
-                            }).toList(),
-                            onChanged: (val) {
-                              if (val != null) setState(() => _selectedCategory = val);
+                               if (newCategory != null) {
+                                 setState(() => _selectedCategory = newCategory);
+                               }
                             },
                           ),
-                        ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      CategorySelector(
+                        categories: categories,
+                        selectedCategory: currentCatExists ? _selectedCategory : (categories.isNotEmpty ? categories.first.name : 'Others'),
+                        onCategorySelected: (val) {
+                           setState(() => _selectedCategory = val);
+                        },
                       ),
                       const SizedBox(height: 16),
                     ],
@@ -367,14 +444,16 @@ class _CustomTextField extends StatelessWidget {
   final String label;
   final String hint;
   final TextInputType? keyboardType;
-  final IconData icon;
+  final IconData? icon;
+  final String? prefixText;
 
   const _CustomTextField({
     required this.controller,
     required this.label,
     required this.hint,
     this.keyboardType,
-    required this.icon,
+    this.icon,
+    this.prefixText,
   });
 
   @override
@@ -392,7 +471,23 @@ class _CustomTextField extends StatelessWidget {
           decoration: InputDecoration(
             hintText: hint,
             hintStyle: TextStyle(color: theme.hintColor),
-            prefixIcon: Icon(icon, color: theme.iconTheme.color),
+            prefixIcon: icon != null ? Icon(icon, color: theme.iconTheme.color) : (prefixText != null ? 
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      prefixText!, 
+                      style: TextStyle(
+                        color: theme.colorScheme.primary, 
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16
+                      )
+                    ),
+                  ],
+                ),
+              ) : null),
             filled: true,
             fillColor: theme.cardColor,
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: theme.dividerColor)),

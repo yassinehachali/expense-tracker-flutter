@@ -152,6 +152,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onTap: () => _showLanguageDialog(context, expenseProvider),
               ),
 
+              ListTile(
+                leading: const Icon(LucideIcons.banknote, color: Colors.orange),
+                title: Text(AppStrings.currencyOption),
+                subtitle: Text(Utils.formatCurrency(0).replaceAll('0', '').trim()), // Show current symbol
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _showCurrencyDialog(context, expenseProvider),
+              ),
+
             const Divider(),
 
             // Danger Zone
@@ -260,6 +268,62 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  void _showCurrencyDialog(BuildContext context, ExpenseProvider provider) {
+    String selected = provider.settings.currency ?? 'MAD';
+    
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: Text(AppStrings.selectCurrency),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                RadioListTile<String>(
+                  title: const Text("Moroccan Dirham (MAD)"),
+                  subtitle: const Text("DH"),
+                  value: 'MAD',
+                  groupValue: selected,
+                  onChanged: (val) {
+                     setState(() => selected = val!);
+                     provider.updateCurrency(val!);
+                     Navigator.pop(ctx);
+                  },
+                ),
+                RadioListTile<String>(
+                  title: const Text("Euro (EUR)"),
+                  subtitle: const Text("€"),
+                  value: 'EUR',
+                  groupValue: selected,
+                  onChanged: (val) {
+                     setState(() => selected = val!);
+                     provider.updateCurrency(val!);
+                     Navigator.pop(ctx);
+                  },
+                ),
+                RadioListTile<String>(
+                  title: const Text("US Dollar (USD)"),
+                  subtitle: const Text("\$"),
+                  value: 'USD',
+                  groupValue: selected,
+                  onChanged: (val) {
+                     setState(() => selected = val!);
+                     provider.updateCurrency(val!);
+                     Navigator.pop(ctx);
+                  },
+                ),
+              ],
+            ),
+             actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: Text(AppStrings.close)),
+            ],
+          );
+        }
+      ),
+    );
+  }
+
   void _showSalaryDialog(BuildContext context, ExpenseProvider provider) {
     // Current Dashboard Context
     final selectedYear = provider.selectedYear;
@@ -307,7 +371,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     keyboardType: TextInputType.number,
                     decoration: InputDecoration(
                       labelText: AppStrings.salaryAmount, 
-                      prefixText: "DH "
+                      prefixText: "${Utils.currencySymbol} "
                     ),
                   ),
                   const SizedBox(height: 16),

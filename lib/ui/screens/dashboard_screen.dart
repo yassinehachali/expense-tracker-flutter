@@ -249,7 +249,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           const SizedBox(height: 24),
 
           // Total Balance / Remaining
-          GlassContainer(
+          GestureDetector(
+            onTap: widget.onViewAll,
+            child: GlassContainer(
             width: double.infinity,
             padding: const EdgeInsets.all(24),
             gradient: LinearGradient(
@@ -298,6 +300,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ],
                 )
               ],
+            ),
             ),
           ),
           

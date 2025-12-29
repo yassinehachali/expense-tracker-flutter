@@ -130,6 +130,8 @@ class AppStrings {
   static String get categoryLabel => _t('categoryLabel');
   static String get dateLabel => _t('dateLabel');
   static String get userNotLoggedIn => _t('userNotLoggedIn');
+  static String get legacyTransactionLabel => _t('legacyTransactionLabel');
+  static String get legacyTransactionHint => _t('legacyTransactionHint');
 
   // Settings Screen
   static String get settingsTitle => _t('settingsTitle');
@@ -143,6 +145,8 @@ class AppStrings {
   static String get guestUser => _t('guestUser');
   static String get languageOption => _t('languageOption');
   static String get selectLanguage => _t('selectLanguage');
+  static String get currencyOption => _t('currencyOption');
+  static String get selectCurrency => _t('selectCurrency');
 
   // Salary Dialog
   static String get customizeCycle => _t('customizeCycle');
@@ -518,6 +522,10 @@ class AppStrings {
     'catOthers': 'Others',
     'receivePaymentTitle': 'Receive Payment',
     'noLendingsMessage': "You haven't lent money to anyone.",
+    'currencyOption': 'Currency',
+    'selectCurrency': 'Select Currency',
+    'legacyTransactionLabel': 'Old Transaction (Pre-App)',
+    'legacyTransactionHint': "Don't affect current balance",
   };
 
   static const Map<String, String> _fr = {
@@ -728,6 +736,10 @@ class AppStrings {
     'catShopping': 'Achats',
     'catHealth': 'Santé',
     'catOthers': 'Autres',
+    'currencyOption': 'Devise',
+    'selectCurrency': 'Choisir la Devise',
+    'legacyTransactionLabel': 'Ancienne Transaction (Hors-App)',
+    'legacyTransactionHint': "N'affecte pas le solde actuel",
   };
 
   static const Map<String, String> _ar = {
@@ -791,13 +803,18 @@ class AppStrings {
     'markAsPending': 'وضع قيد الانتظار',
     'borrow': 'اقترض',
     'loansManager': 'إدارة الديون',
+
     'repay': 'سداد',
+    'legacyTransactionLabel': 'معاملة قديمة (قبل التطبيق)',
+    'legacyTransactionHint': 'لا تؤثر على الرصيد الحالي',
     'totalBorrowed': 'إجمالي المقترض: ',
     'descHintBorrow': 'ممن تقترض؟',
     'addTransaction': 'إضافة معاملة',
     'saveTransaction': 'حفظ',
     'transactionSaved': 'تم حفظ المعاملة!',
     'transactionUpdated': 'تم تحديث المعاملة!',
+    'currencyOption': 'العملة',
+    'selectCurrency': 'اختر العملة',
     'invalidAmount': 'الرجاء إدخال مبلغ صحيح',
     'errorPrefix': 'خطأ: ',
     'amountLabel': 'المبلغ',
