@@ -106,7 +106,12 @@ class Utils {
     'Sofa': LucideIcons.sofa,
     'Cigarette': LucideIcons.cigarette,
     'Vape': LucideIcons.cloudFog,
+    'Calendar': LucideIcons.calendar,
   };
+
+  static IconData getIcon(String key) {
+    return _iconMap[key] ?? LucideIcons.helpCircle;
+  }
 
   static List<String> get availableIconKeys => _iconMap.keys.toList();
 
@@ -207,4 +212,11 @@ class Utils {
     ['smoke', 'cigarette', 'tobacco', 'cigar']: 'Cigarette',
     ['vape', 'eliquid', 'pod', 'juice']: 'Vape',
   };
+  static int getDaysInMonth(int year, int month) {
+    if (month == 12) return 31; // Dec (if called with 1-based but let's assume standard DateTime usage month is 1-12)
+    // DateTime(year, month + 1, 0) gives the last day of 'month'.
+    // e.g. DateTime(2023, 3, 0) -> Feb 28. (Year, Month=3=March, Day=0=Last Day of Prev Month=Feb).
+    // So to get days in Month M, we use (M + 1, 0).
+    return DateTime(year, month + 1, 0).day;
+  }
 }

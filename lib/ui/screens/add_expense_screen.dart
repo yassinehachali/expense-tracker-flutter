@@ -35,6 +35,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   String _selectedType = 'expense'; 
   DateTime _selectedDate = DateTime.now();
   String _selectedCategory = DEFAULT_CATEGORIES[0]['name'] as String;
+  String? _selectedEventId; // Added default null
   
   bool _isLoading = false;
   bool _excludeFromBalance = false;
@@ -50,9 +51,29 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       _selectedDate = DateTime.parse(e.date);
       _selectedCategory = e.category; 
       _excludeFromBalance = e.excludeFromBalance;
+      _selectedEventId = e.eventId; // Load eventId
     } else {
       if (widget.initialType != null) _selectedType = widget.initialType!;
       if (widget.initialDate != null) _selectedDate = widget.initialDate!;
+      // Note: Category initialization moved to didChangeDependencies to access Provider
+    }
+  }
+
+  bool _isInit = true; // Helper to prevent overriding on every rebuild
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_isInit) {
+      if (widget.expenseToEdit == null) {
+         // Only set default category if we are creating a NEW expense
+         final provider = Provider.of<ExpenseProvider>(context, listen: false);
+         if (provider.categories.isNotEmpty) {
+           // Default to the first category in the sorted list (User's preferred top category)
+           _selectedCategory = provider.categories.first.name;
+         }
+      }
+      _isInit = false;
     }
   }
 
@@ -85,13 +106,16 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         id: widget.expenseToEdit?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
         // userId: userId, // Removed
         amount: amount,
-        // Fix: For Loan/Borrow, ignore selectedCategory (default) and use explicit type label
+        // Fix: For Loan/Borrow/Income, ignore selectedCategory (default) and use explicit type label
         category: _selectedType == 'loan' ? 'Lending' : 
-                  (_selectedType == 'borrow' ? 'Borrowing' : _selectedCategory),
+                  (_selectedType == 'borrow' ? 'Borrowing' : 
+                  (_selectedType == 'income' ? 'Income' : _selectedCategory)),
         date: _selectedDate.toIso8601String(),
-        description: _descriptionController.text, 
+        description: _selectedType == 'income' && _descriptionController.text.isEmpty 
+            ? "Income ${_getIncomeCount(expenseProvider) + 1}" // Auto-generate "Income 1", "Income 2"
+            : _descriptionController.text, 
         type: _selectedType,
-        // isSynced: false, // Not in constructor based on file view
+        // isSynced: false,
         
         loanee: (_selectedType == 'loan' || _selectedType == 'borrow') ? _descriptionController.text : null,
         isReturned: widget.expenseToEdit?.isReturned ?? false,
@@ -99,6 +123,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         relatedLoanId: widget.expenseToEdit?.relatedLoanId,
         originChargeId: widget.expenseToEdit?.originChargeId,
         excludeFromBalance: _excludeFromBalance,
+        eventId: _selectedEventId,
       );
 
       // Assume add/update return void/Future<void> based on previous error
@@ -127,6 +152,13 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         );
       }
     }
+  }
+
+  int _getIncomeCount(ExpenseProvider provider) {
+     final validIncomes = provider.expenses.where((e) => 
+       e.type == 'income' && (e.description.startsWith('Income') || e.description.isEmpty)
+     ).toList();
+     return validIncomes.length;
   }
 
   @override
@@ -273,6 +305,55 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
             const SizedBox(height: 16),
 
+             // Event Selector (Optional)
+             if (_selectedType == 'expense')
+               Consumer<ExpenseProvider>(
+                  builder: (context, provider, child) {
+                     if (provider.events.isEmpty) return const SizedBox.shrink();
+                     
+                     return Container(
+                       margin: const EdgeInsets.only(bottom: 16),
+                       child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text("Event (Optional)", style: const TextStyle(fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 8),
+                            Container(
+                             padding: const EdgeInsets.symmetric(horizontal: 12),
+                             decoration: BoxDecoration(
+                               color: theme.cardColor,
+                               borderRadius: BorderRadius.circular(12),
+                               border: Border.all(color: theme.dividerColor),
+                             ),
+                             child: DropdownButtonHideUnderline(
+                               child: DropdownButton<String>(
+                                 value: _selectedEventId,
+                                 hint: Text("Select Event"),
+                                 isExpanded: true,
+                                 items: [
+                                   const DropdownMenuItem<String>(
+                                      value: null, 
+                                      child: Text("None (Regular Expense)"),
+                                   ),
+                                   ...provider.events.where((e) => !e.isClosed).map((e) {
+                                      return DropdownMenuItem<String>(
+                                        value: e.id,
+                                        child: Text(e.name),
+                                      );
+                                   }).toList()
+                                 ],
+                                 onChanged: (val) {
+                                    setState(() => _selectedEventId = val);
+                                 },
+                               ),
+                             ),
+                            ),
+                          ],
+                       ),
+                     );
+                  }
+               ),
+
             // Category Selector (Only for Expense)
             if (_selectedType == 'expense')
               Consumer<ExpenseProvider>(
@@ -405,14 +486,17 @@ class _TypeTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final primary = theme.colorScheme.primary;
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.white.withOpacity(0.1) : Colors.transparent,
+          color: isSelected ? primary.withOpacity(0.1) : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
-          border: isSelected ? Border.all(color: Colors.white24) : null,
+          border: isSelected ? Border.all(color: primary.withOpacity(0.3)) : null,
         ),
         child: Column(
            mainAxisAlignment: MainAxisAlignment.center,
@@ -420,7 +504,7 @@ class _TypeTab extends StatelessWidget {
              Icon(
                icon, 
                size: 20, 
-               color: isSelected ? Colors.white : Colors.grey
+               color: isSelected ? primary : Colors.grey
              ),
              const SizedBox(height: 4),
              Text(
@@ -429,7 +513,7 @@ class _TypeTab extends StatelessWidget {
                style: TextStyle(
                  fontSize: 12,
                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                 color: isSelected ? Colors.white : Colors.grey,
+                 color: isSelected ? primary : Colors.grey,
                ),
              ),
            ]

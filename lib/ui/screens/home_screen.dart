@@ -8,8 +8,12 @@ import 'dashboard_screen.dart';
 import 'transactions_screen.dart';
 import 'settings_screen.dart';
 import 'add_expense_screen.dart';
+import 'add_expense_screen.dart';
 import '../../core/app_strings.dart';
-import '../../data/services/notification_service.dart'; 
+import '../../data/services/notification_service.dart';  
+import 'fixed_charges_screen.dart';
+import 'loans_manager_screen.dart';
+import 'insurance_screen.dart'; // Verified filename 
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -18,8 +22,13 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
   int _selectedIndex = 0;
+  
+  // FAB Animation
+  late AnimationController _fabController;
+  late Animation<double> _fabAnimation;
+  bool _isFabOpen = false;
 
   void _onItemTapped(int index) {
     setState(() {
@@ -27,10 +36,31 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  // ...
+  void _toggleFab() {
+    setState(() {
+      _isFabOpen = !_isFabOpen;
+      if (_isFabOpen) {
+        _fabController.forward();
+      } else {
+        _fabController.reverse();
+      }
+    });
+  }
+  
   @override
   void initState() {
     super.initState();
+    
+    _fabController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
+    );
+    _fabAnimation = CurvedAnimation(
+      parent: _fabController,
+      curve: Curves.easeOut,
+    );
+
+    // Listen for global navigation events
     // Listen for global navigation events
     GlobalEvents.stream.listen((event) {
       if (event == 'open_update_check') {
@@ -132,13 +162,29 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       resizeToAvoidBottomInset: false, // Critical for PWA overlay mode: prevents blank space under keyboard
-      body: SafeArea(
-        bottom: false, // Ignore the bottom (keyboard/home bar) area
-        child: IndexedStack(
-          index: _selectedIndex,
-          children: screens,
-        ),
+      body: Stack(
+        children: [
+          SafeArea(
+            bottom: false,
+            child: IndexedStack(
+              index: _selectedIndex,
+              children: screens,
+            ),
+          ),
+          
+          // Dimming Overlay when FAB is open
+          if (_isFabOpen)
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: _toggleFab,
+                child: Container(
+                  color: Colors.black54,
+                ),
+              ),
+            ),
+        ],
       ),
+      floatingActionButton: _selectedIndex != 2 ? _buildExpandableFab(theme) : null,
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           border: Border(top: BorderSide(color: theme.dividerColor)),
@@ -170,12 +216,107 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
-      floatingActionButton: _selectedIndex != 2 ? FloatingActionButton(
-        onPressed: _openAddExpense,
-        backgroundColor: Colors.indigo,
-        elevation: 4,
-        child: const Icon(LucideIcons.plus, color: Colors.white),
-      ) : null,
+    );
+  }
+
+  Widget _buildExpandableFab(ThemeData theme) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        if (_isFabOpen) ...[
+          // 4. Loans Manager
+          _buildFabItem(
+            theme,
+            icon: LucideIcons.userCheck,
+            label: AppStrings.loansManager,
+            onTap: () {
+              _toggleFab();
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const LoansManagerScreen()));
+            },
+          ),
+          const SizedBox(height: 16),
+
+          // 3. Health Insurance
+          _buildFabItem(
+            theme,
+            icon: LucideIcons.heartPulse,
+            label: AppStrings.healthInsuranceTitle,
+            onTap: () {
+               _toggleFab();
+               // Ensure correct import
+               Navigator.push(context, MaterialPageRoute(builder: (_) => const InsuranceScreen())); 
+            },
+          ),
+          const SizedBox(height: 16),
+
+          // 2. Fixed Charges
+          _buildFabItem(
+            theme,
+            icon: LucideIcons.calendarClock,
+            label: AppStrings.fixedCharges,
+            onTap: () {
+               _toggleFab();
+               Navigator.push(context, MaterialPageRoute(builder: (_) => const FixedChargesScreen()));
+            },
+          ),
+          const SizedBox(height: 16),
+          
+          // 1. Add Expense (Standard)
+          _buildFabItem(
+            theme,
+            icon: LucideIcons.receipt,
+            label: AppStrings.addTransaction,
+            onTap: () {
+               _toggleFab();
+               _openAddExpense();
+            },
+          ),
+          const SizedBox(height: 16),
+        ],
+
+        // Main Toggle Button
+        FloatingActionButton(
+          onPressed: _toggleFab,
+          backgroundColor: Colors.indigo,
+          elevation: 4,
+          child: RotationTransition(
+            turns: Tween(begin: 0.0, end: 0.125).animate(_fabController), // 45 degrees
+            child: const Icon(LucideIcons.plus, color: Colors.white, size: 28),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFabItem(ThemeData theme, {required IconData icon, required String label, required VoidCallback onTap}) {
+    return ScaleTransition(
+      scale: _fabAnimation,
+      alignment: Alignment.bottomRight,
+      child: FadeTransition(
+        opacity: _fabAnimation,
+        child: Material(
+          color: theme.cardColor,
+          elevation: 4,
+          borderRadius: BorderRadius.circular(12),
+          child: InkWell(
+             onTap: onTap,
+             borderRadius: BorderRadius.circular(12),
+             child: Container(
+               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+               child: Row(
+                 mainAxisSize: MainAxisSize.min,
+                 mainAxisAlignment: MainAxisAlignment.end,
+                 children: [
+                   Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                   const SizedBox(width: 12),
+                   Icon(icon, color: Colors.indigo, size: 24),
+                 ],
+               ),
+             ),
+          ),
+        ),
+      ),
     );
   }
 }

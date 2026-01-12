@@ -1,11 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/expense_model.dart';
 import '../models/category_model.dart';
-import '../models/category_model.dart';
 import '../models/user_settings_model.dart';
 import '../models/fixed_charge_model.dart';
 import '../models/beneficiary_model.dart';
 import '../models/insurance_claim_model.dart';
+import '../models/event_model.dart';
 
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -54,7 +54,22 @@ class FirestoreService {
         .collection('fixed_charges');
   }
 
+  CollectionReference _getEventsRef(String uid) {
+    return _db
+        .collection('artifacts')
+        .doc(appId)
+        .collection('users')
+        .doc(uid)
+        .collection('events');
+  }
+
   // --- Streams ---
+
+  Stream<List<EventModel>> getEventsStream(String uid) {
+    return _getEventsRef(uid).snapshots().map((snapshot) {
+      return snapshot.docs.map((doc) => EventModel.fromMap(doc.data() as Map<String, dynamic>)).toList();
+    });
+  }
 
   Stream<List<ExpenseModel>> getExpensesStream(String uid) {
     return _getExpensesRef(uid).snapshots().map((snapshot) {
@@ -144,6 +159,27 @@ class FirestoreService {
     await _getCategoriesRef(uid).update({
       'list': FieldValue.arrayRemove([category.toMap()])
     });
+  }
+
+  Future<void> updateCategoryList(String uid, List<CategoryModel> categories) async {
+    // Replaces the entire list. Used for Reordering.
+    await _getCategoriesRef(uid).set({
+      'list': categories.map((c) => c.toMap()).toList()
+    }, SetOptions(merge: true));
+  }
+  
+  // --- Event Actions ---
+
+  Future<void> addEvent(String uid, EventModel event) async {
+    await _getEventsRef(uid).doc(event.id).set(event.toMap());
+  }
+
+  Future<void> updateEvent(String uid, EventModel event) async {
+    await _getEventsRef(uid).doc(event.id).update(event.toMap());
+  }
+
+  Future<void> deleteEvent(String uid, String eventId) async {
+    await _getEventsRef(uid).doc(eventId).delete();
   }
   
   Future<void> resetData(String uid) async {

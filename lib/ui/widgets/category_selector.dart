@@ -52,15 +52,27 @@ class _CategorySelectorState extends State<CategorySelector> {
     final index = widget.categories.indexWhere((c) => c.name == widget.selectedCategory);
     if (index != -1 && _scrollController.hasClients) {
        // Item width = 56 (container) + 16 (separator) approx = 72
-       // To center: index * itemWidth - (viewportWidth / 2) + (itemWidth / 2)
-       // Simple scroll: index * 72
        final offset = index * 72.0;
 
-       _scrollController.animateTo(
-         offset,
-         duration: const Duration(milliseconds: 300),
-         curve: Curves.easeInOut,
-       );
+       // Verify dimensions exist before scrolling
+       if (_scrollController.position.hasContentDimensions) {
+          _scrollController.animateTo(
+           offset,
+           duration: const Duration(milliseconds: 300),
+           curve: Curves.easeInOut,
+         );
+       } else {
+         // Retry after frame if layout not ready
+         WidgetsBinding.instance.addPostFrameCallback((_) {
+           if (mounted && _scrollController.hasClients && _scrollController.position.hasContentDimensions) {
+             _scrollController.animateTo(
+               offset,
+               duration: const Duration(milliseconds: 300),
+               curve: Curves.easeInOut,
+             );
+           }
+         });
+       }
     }
   }
 
@@ -90,19 +102,19 @@ class _CategorySelectorState extends State<CategorySelector> {
                   width: 56,
                   height: 56,
                   decoration: BoxDecoration(
-                    // Light tint of primary color for background, or keeps card color if preferred
-                    color: isSelected ? theme.primaryColor.withOpacity(0.1) : theme.cardColor,
+                    // Use colorScheme.primary for better visibility in both modes
+                    color: isSelected ? theme.colorScheme.primary : theme.cardColor,
                     shape: BoxShape.circle,
                     border: Border.all(
                       // Prominent outline ring when selected
                       color: isSelected 
-                          ? theme.primaryColor 
+                          ? theme.colorScheme.primary 
                           : theme.dividerColor,
                       width: isSelected ? 2.0 : 1.0,
                     ),
                     boxShadow: isSelected ? [
                       BoxShadow(
-                        color: theme.primaryColor.withOpacity(0.2),
+                        color: theme.colorScheme.primary.withOpacity(0.4),
                         blurRadius: 8,
                         offset: const Offset(0, 2),
                       )
@@ -112,9 +124,8 @@ class _CategorySelectorState extends State<CategorySelector> {
                     child: CategoryIcon(
                       iconKey: category.icon,
                       size: 24,
-                      // Keep icon colored with primary when selected (since bg is light), 
-                      // or normal color when not.
-                      color: isSelected ? theme.primaryColor : theme.iconTheme.color,
+                      // High contrast: white/black on primary
+                      color: isSelected ? theme.colorScheme.onPrimary : theme.iconTheme.color,
                     ),
                   ),
                 ),
@@ -124,7 +135,8 @@ class _CategorySelectorState extends State<CategorySelector> {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                    color: isSelected ? theme.primaryColor : theme.textTheme.bodyMedium?.color,
+                    // Use primary color for text when selected to match
+                    color: isSelected ? theme.colorScheme.primary : theme.textTheme.bodyMedium?.color,
                   ),
                 ),
               ],

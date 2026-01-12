@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import '../data/models/expense_model.dart';
+import '../data/models/event_model.dart'; // Added
 import '../data/models/category_model.dart';
 import '../data/models/user_settings_model.dart';
 import '../data/models/fixed_charge_model.dart';
@@ -24,6 +25,7 @@ class ExpenseProvider with ChangeNotifier {
   List<FixedChargeModel> _fixedCharges = [];
   List<InsuranceClaimModel> _insuranceClaims = [];
   List<BeneficiaryModel> _beneficiaries = [];
+  List<EventModel> _events = []; // Added
   final List<InsuranceClaimModel> _localPendingClaims = []; // Store offline creations here
   final Set<String> _localDeletedClaimIds = {}; // Store pending deletes to suppress "Zombie" reappearance
 
@@ -43,6 +45,7 @@ class ExpenseProvider with ChangeNotifier {
   StreamSubscription? _fixedChargesSub;
   StreamSubscription? _insuranceClaimsSub;
   StreamSubscription? _beneficiariesSub;
+  StreamSubscription? _eventsSub; // Added
 
   List<InsuranceClaimModel> get insuranceClaims {
     // Merge Pending + Stream (Prefer Stream if ID exists)
@@ -57,16 +60,72 @@ class ExpenseProvider with ChangeNotifier {
 
   bool _isLoading = false;
   bool get isLoading => _isLoading;
+  
+  // Privacy Mode (Global)
+  bool _isPrivacyEnabled = true; // Default visible
+  bool get isPrivacyEnabled => _isPrivacyEnabled;
+  
+  void togglePrivacy() {
+    _isPrivacyEnabled = !_isPrivacyEnabled;
+    notifyListeners();
+  }
 
   List<ExpenseModel> get expenses => _expenses;
   List<FixedChargeModel> get fixedCharges => _fixedCharges;
   List<BeneficiaryModel> get beneficiaries => _beneficiaries;
+  List<EventModel> get events => _events; // Added
   List<CategoryModel> get categories {
-    final defaults = DEFAULT_CATEGORIES.map((c) => CategoryModel.fromMap(c)).toList();
     final Map<String, CategoryModel> uniqueCategories = {};
-    for (var c in defaults) uniqueCategories[c.name] = c;
-    for (var c in _categories) uniqueCategories[c.name] = c;
-    return uniqueCategories.values.toList();
+    
+    // 1. Add Defaults with Implicit Order
+    for (int i = 0; i < DEFAULT_CATEGORIES.length; i++) {
+      final map = DEFAULT_CATEGORIES[i];
+      // We assume defaults have order = index
+      final c = CategoryModel.fromMap({...map, 'order': i});
+      uniqueCategories[c.name] = c;
+    }
+    
+    // 2. Override with DB Categories (which hold the persisted order)
+    for (var c in _categories) {
+       uniqueCategories[c.name] = c;
+    }
+    
+    // 3. Sort
+    final list = uniqueCategories.values.toList();
+    list.sort((a, b) => a.order.compareTo(b.order));
+    return list;
+  }
+
+  Future<void> reorderCategories(int oldIndex, int newIndex) async {
+    if (userId == null) return;
+    
+    // 1. Get current list (Hybrid of Defaults + DB)
+    final list = categories; 
+    
+    // 2. Perform Reorder
+    if (oldIndex < newIndex) {
+      newIndex -= 1;
+    }
+    final item = list.removeAt(oldIndex);
+    list.insert(newIndex, item);
+    
+    // 3. Re-assign 'order' and create full list to persist
+    final List<CategoryModel> materializedList = [];
+    for (int i = 0; i < list.length; i++) {
+       final old = list[i];
+       materializedList.add(CategoryModel(
+         name: old.name,
+         color: old.color,
+         icon: old.icon,
+         order: i, 
+       ));
+    }
+    
+    // 4. Update Local & Remote
+    _categories = materializedList;
+    notifyListeners();
+    
+    await _firestoreService.updateCategoryList(userId!, materializedList);
   }
   
   int get selectedMonth => _selectedMonth;
@@ -202,6 +261,11 @@ class ExpenseProvider with ChangeNotifier {
       _beneficiaries = data;
       notifyListeners();
     }, onError: (e) => print("Error loading beneficiaries: $e"));
+
+    _eventsSub = _firestoreService.getEventsStream(uid).listen((data) {
+      _events = data;
+      notifyListeners();
+    }, onError: (e) => print("Error loading events: $e"));
   }
   
   void _cancelSubscriptions() {
@@ -211,6 +275,7 @@ class ExpenseProvider with ChangeNotifier {
     _fixedChargesSub?.cancel();
     _insuranceClaimsSub?.cancel();
     _beneficiariesSub?.cancel();
+    _eventsSub?.cancel();
   }
 
   @override
@@ -480,7 +545,15 @@ class ExpenseProvider with ChangeNotifier {
     for (var curr in cycleExpenses) {
       if (curr.type == 'income' || curr.type == 'borrow') continue; // Borrowing is cash in, not spending
 
-      if (curr.type == 'loan') {
+      // Event Handling: If expense belongs to an event, we group it under the Event Name
+      if (curr.eventId != null && curr.eventId!.isNotEmpty) {
+         final event = _events.firstWhere((e) => e.id == curr.eventId, orElse: () => EventModel(id: '', userId: '', name: 'Unknown Event', lastUpdated: ''));
+         // Use "Event: Name" or just "Name" (e.g. "Trip to Marrakesh")
+         // To avoid collision with Categories, maybe prefix? User wants "Trip..."
+         final key = event.name; 
+         categoryMap[key] = (categoryMap[key] ?? 0) + curr.amount;
+      } 
+      else if (curr.type == 'loan') {
         categoryMap['Lending'] = (categoryMap['Lending'] ?? 0) + curr.amount;
       } else {
         categoryMap[curr.category] = (categoryMap[curr.category] ?? 0) + curr.amount;
@@ -501,6 +574,21 @@ class ExpenseProvider with ChangeNotifier {
   Future<void> addExpense(ExpenseModel expense) async {
     if (userId == null) return;
     await _firestoreService.addExpense(userId!, expense);
+
+    // Event Aggregation Logic
+    if (expense.eventId != null && expense.eventId!.isNotEmpty) {
+      final eventIndex = _events.indexWhere((e) => e.id == expense.eventId);
+      if (eventIndex != -1) {
+        final event = _events[eventIndex];
+        final updatedEvent = event.copyWith(
+          totalAmount: event.totalAmount + expense.amount,
+          lastUpdated: DateTime.now().toIso8601String(),
+        );
+        _events[eventIndex] = updatedEvent;
+        notifyListeners();
+        await updateEvent(updatedEvent);
+      }
+    }
   }
   
   Future<void> updateExpense(ExpenseModel expense) async {
@@ -510,6 +598,27 @@ class ExpenseProvider with ChangeNotifier {
     final oldExpense = _expenses.firstWhere((e) => e.id == expense.id, orElse: () => expense);
     
     await _firestoreService.updateExpense(userId!, expense.id, expense.toMap());
+
+    // --- EVENT LOGIC START ---
+    // Case A: Amount changed within same event
+    if (oldExpense.eventId == expense.eventId && expense.eventId != null) {
+       final diff = expense.amount - oldExpense.amount;
+       if (diff != 0) {
+         await _adjustEventTotal(expense.eventId!, diff);
+       }
+    }
+    // Case B: Event Changed (Moved from Event A to Event B)
+    else if (oldExpense.eventId != expense.eventId) {
+       // Remove from Old (if exists)
+       if (oldExpense.eventId != null) {
+         await _adjustEventTotal(oldExpense.eventId!, -oldExpense.amount);
+       }
+       // Add to New (if exists)
+       if (expense.eventId != null) {
+         await _adjustEventTotal(expense.eventId!, expense.amount);
+       }
+    }
+    // --- EVENT LOGIC END ---
 
     // 2. Sync if this is a Repayment (Linked to a Loan)
     if (expense.relatedLoanId != null && expense.relatedLoanId!.isNotEmpty) {
@@ -851,45 +960,7 @@ class ExpenseProvider with ChangeNotifier {
     }
   }
 
-  DateTime _calculateChargeDate(int year, int month, int dayOfMonth) {
-    // Determine the likely date for this charge in the requested cycle (year, month).
-    // Our cycles can be offset. 
-    // Cycle for "January" (month=0) might start Dec 26.
-    // If charge day is 5 -> Jan 5.
-    // If charge day is 28 -> Dec 28.
-    
-    final s = _getEffectiveSettings(year, month);
-    // Logic: 
-    // If startOffset == -1 (Starts previous month)
-    //   if day >= startDay -> Date is in Previous Month
-    //   else -> Date is in Current Month
-    // If startOffset == 0 (Starts same month)
-    //   Date is in Current Month
-    
-    // Note: 'month' param is 0-indexed (0=Jan).
-    // DateTime accepts month 1-12 usually or handles overflow 13 -> Jan Next Year.
-    // Lets use 1-based month for variable m to be clear.
-    
-    int targetYear = year;
-    int targetMonth = month + 1; // 1 = Jan
-    
-    if (s.monthOffset == -1) {
-      if (dayOfMonth >= s.startDay) {
-        // Belongs to previous month part of the cycle
-        targetMonth = targetMonth - 1;
-      }
-    }
-    // Handle year rollover if targetMonth became 0 (Dec prev year) or we incremented (not here but possible)
-    if (targetMonth < 1) {
-      targetMonth = 12;
-      targetYear--;
-    } else if (targetMonth > 12) {
-      targetMonth = 1;
-      targetYear++;
-    }
-    
-    return DateTime(targetYear, targetMonth, dayOfMonth);
-  }
+
 
   // Helper to check status for UI
   bool isChargeAppliedInCycle(String chargeId, int year, int month) {
@@ -915,7 +986,7 @@ class ExpenseProvider with ChangeNotifier {
   /// Manually apply charges (e.g. via UI button).
   /// Can apply [manualOnly] or all.
   /// [chargeId]: Optional, apply ONLY this specific charge (Manual Individual Apply)
-  Future<void> applyFixedChargesToCycle(int year, int month, {bool manualOnly = false, String? chargeId}) async {
+  Future<void> applyFixedChargesToCycle(int year, int month, {bool manualOnly = false, String? chargeId, DateTime? customDate}) async {
     List<FixedChargeModel> targets;
     
     if (chargeId != null) {
@@ -949,14 +1020,14 @@ class ExpenseProvider with ChangeNotifier {
       });
 
       if (!alreadyExists) {
-        await _applyChargeToCycle(charge, year, month);
+        await _applyChargeToCycle(charge, year, month, dateOverride: customDate);
       } else {
         print("Skipping ${charge.name}, already applied.");
       }
     }
   }
 
-  Future<void> _applyChargeToCycle(FixedChargeModel charge, int year, int month) async {
+  Future<void> _applyChargeToCycle(FixedChargeModel charge, int year, int month, {DateTime? dateOverride}) async {
     // Determine Date
     // logic: cycle start + (day - 1)? Or just day of month?
     // "dayOfMonth" usually means "5th of the month".
@@ -994,60 +1065,22 @@ class ExpenseProvider with ChangeNotifier {
     
     // Candidate 2: The 'previous' month (associated with offset starts)
     final candidate2 = DateTime(year, month, charge.dayOfMonth);
-    
     // We need to see which one falls >= cycleStart
     // and < cycleStart + 1 month roughly.
     // Actually, we define cycle by [Start, NextStart).
     
-    // Let's use simpler logic: 
-    // Construct date using the SAME month logic as the cycle start?
-    // If cycle starts Dec 26. "Month" is Jan.
-    // If charge is Day 5. -> Jan 5.
-    // If charge is Day 28. -> Dec 28.
-    
-    // Heuristic:
-    // If charge.dayOfMonth < s.startDay: It's likely in the "Main" month (Jan).
-    // If charge.dayOfMonth >= s.startDay: It's likely in the "Start" month (Dec).
-    // Example: Start Dec 26. 
-    // Day 5 < 26 -> Jan 5.
-    // Day 26 >= 26 -> Dec 26.
-    
-    // Start Jan 1.
-    // Day 5 >= 1 -> Jan 5.
-    // This heuristic fails for StartDay=1.
-    
-    // Let's rely on standard logic:
-    // "Target Month" = (month+1).
-    // If s.monthOffset == -1 (Starts previous month).
-    //   If day >= startDay -> Date is (year, month, day) // Dec
-    //   Else -> Date is (year, month+1, day) // Jan
-    // If s.monthOffset == 0 (Starts same month).
-    //   Date is (year, month+1, day) // Jan (Careful of overlap if day < startDay? No, startDay usually 1)
-    
-    int y = year;
-    int m = month + 1; // 1-12
-    
-    if (s.monthOffset == -1) {
-       // Starts prev month (e.g. Dec 26 for Jan)
-       if (charge.dayOfMonth >= s.startDay) {
-         m = m - 1; 
-       }
-    } else {
-       // Starts same month (e.g. Jan 1 for Jan)
-       // Usually means day is in this month.
-       // What if charge is Day 31 and month has 30? DateTime handles overflow automatically (Oct 31 -> Nov 1)
-       // We accept that.
+    // Use helper to determine scheduled date
+    targetDate = _calculateChargeDate(year, month, charge.dayOfMonth);
+
+    // Override if manual application requested "Now"
+    if (dateOverride != null) {
+      targetDate = dateOverride;
     }
-    
-    if (m < 1) { m = 12; y--; }
-    if (m > 12) { m = 1; y++; }
-    
-    targetDate = DateTime(y, m, charge.dayOfMonth);
     
     // Create Expense
     final newExpense = ExpenseModel(
       id: '', // Firestore gen
-      amount: charge.amount,
+      amount: charge.amount, // For Fixed Charge application
       category: charge.category,
       description: charge.name, // "Rent"
       date: targetDate.toIso8601String(),
@@ -1058,12 +1091,107 @@ class ExpenseProvider with ChangeNotifier {
     await addExpense(newExpense);
   }
 
+  // --- Event CRUD ---
+
+  Future<void> addEvent(EventModel event) async {
+    if (userId == null) return;
+    await _firestoreService.addEvent(userId!, event);
+    // Stream will update local list
+  }
+
+  Future<void> updateEvent(EventModel event) async {
+    if (userId == null) return;
+    await _firestoreService.updateEvent(userId!, event);
+  }
+
+  Future<void> deleteEvent(String eventId) async {
+    if (userId == null) return;
+    
+    // Cascade Delete: Find all expenses linked to this event
+    final linkedExpenses = _expenses.where((e) => e.eventId == eventId).toList();
+    
+    // Delete them one by one (or batch if service supported it, but loop is fine for now)
+    for (final exp in linkedExpenses) {
+       await _firestoreService.deleteExpense(userId!, exp.id);
+       // Local list update handled by stream or we can remove manually for instant feedback
+       // _expenses.removeWhere((e) => e.id == exp.id);
+    }
+    
+    await _firestoreService.deleteEvent(userId!, eventId);
+  }
+
+  Future<void> _adjustEventTotal(String eventId, double delta) async {
+      final eventIndex = _events.indexWhere((e) => e.id == eventId);
+      if (eventIndex != -1) {
+        final event = _events[eventIndex];
+        final updatedEvent = event.copyWith(
+          totalAmount: event.totalAmount + delta,
+          lastUpdated: DateTime.now().toIso8601String(),
+        );
+        _events[eventIndex] = updatedEvent;
+        notifyListeners();
+        await updateEvent(updatedEvent);
+      }
+  }
+    
+  DateTime _calculateChargeDate(int year, int month, int dayOfMonth) {
+    // Logic:
+    // A cycle is defined as [StartDay of Month S, StartDay of Month S+1).
+    // Where Month S is determined by the offset.
+    
+    final s = _getEffectiveSettings(year, month); // Added: Define 's'
+
+    // Calculate Reference Start Date first.
+    int startMonthIndex = month + s.monthOffset; // 0-based
+    int startYear = year;
+    if (startMonthIndex < 0) {
+      startMonthIndex = 11;
+      startYear--;
+    }
+    
+    // So Cycle starts in (startYear, startMonthIndex + 1).
+    // Compare Day vs StartDay.
+    
+    int targetYear;  // Added: Declaration
+    int targetMonth; // Added: Declaration
+
+    if (dayOfMonth >= s.startDay) {
+       // It belongs to the "Start Month" side of the cycle.
+       targetYear = startYear;
+       targetMonth = startMonthIndex + 1;
+    } else {
+       // It belongs to the "End Month" side of the cycle.
+       // E.g. Dec 26 - Jan 26.
+       // Day 5 belongs to Jan. (Month+1 of Start).
+       
+       int nextMonthIndex = startMonthIndex + 1;
+       int nextYear = startYear;
+       if (nextMonthIndex > 11) {
+         nextMonthIndex = 0;
+         nextYear++;
+       }
+       targetYear = nextYear;
+       targetMonth = nextMonthIndex + 1;
+    }
+    
+    // Clamp day to max days in that target month
+    final maxDays = Utils.getDaysInMonth(targetYear, targetMonth); 
+    final safeDay = dayOfMonth > maxDays ? maxDays : dayOfMonth;
+    
+    return DateTime(targetYear, targetMonth, safeDay);
+  }
+
   Future<void> deleteExpense(String id) async {
     if (userId == null) return;
     
     // Check if it's a linked repayment before deleting
     final exp = _expenses.firstWhere((e) => e.id == id, orElse: () => ExpenseModel(id: '', amount: 0, category: '', description: '', date: '', type: ''));
     
+    // Decrease Event Total if applicable (Added)
+    if (exp.eventId != null) {
+       await _adjustEventTotal(exp.eventId!, -exp.amount);
+    } // End Added
+
     if (exp.id.isNotEmpty && exp.relatedLoanId != null && exp.relatedLoanId!.isNotEmpty) {
        // Revert the repayment amount from the loan
        await _syncLoanRepayment(exp.relatedLoanId!, -exp.amount);
@@ -1091,10 +1219,37 @@ class ExpenseProvider with ChangeNotifier {
     await _firestoreService.updateMonthlyOverride(userId!, year, month + 1, settings);
   }
 
+  // Public wrapper for UI access
+  MonthlySettings getSettingsForMonth(int year, int month) {
+    return _getEffectiveSettings(year, month);
+  }
+
   
   Future<void> addCategory(CategoryModel cat) async {
      if (userId == null) return;
-     await _firestoreService.addCategory(userId!, cat);
+     
+     // Assign Order: Put at the end of the list
+     // We need the current full list to determine the max order
+     final currentList = categories; // Uses the getter which merges defaults
+     int maxOrder = -1;
+     if (currentList.isNotEmpty) {
+       maxOrder = currentList.map((c) => c.order).reduce((curr, next) => curr > next ? curr : next);
+     }
+     
+     final newCat = CategoryModel(
+       name: cat.name,
+       color: cat.color,
+       icon: cat.icon,
+       order: maxOrder + 1,
+     );
+     
+     await _firestoreService.addCategory(userId!, newCat);
+     // Note: This appends to the list. If we want it to be sortable immediately alongside others, 
+     // it needs to have the order field saved. CategoryModel.toMap() uses the field, which we set. 
+     
+     // Force refresh local list (optional, as stream will update)
+     // _categories.add(newCat); 
+     // notifyListeners();
   }
   
   Future<void> deleteCategory(CategoryModel cat) async {

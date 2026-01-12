@@ -9,6 +9,10 @@ import '../../data/models/expense_model.dart';
 import '../../core/utils.dart'; // Ensure utils has formatCurrency
 
 import '../../core/app_strings.dart';
+import '../../data/models/event_model.dart';
+import 'event_detail_screen.dart';
+import '../widgets/glass_container.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 
 class TransactionsScreen extends StatelessWidget {
   const TransactionsScreen({super.key});
@@ -19,16 +23,27 @@ class TransactionsScreen extends StatelessWidget {
     final theme = Theme.of(context);
     
     // Grouping Logic
-    final groupedExpenses = <String, List<ExpenseModel>>{};
-    for (var expense in provider.filteredExpenses) {
+    final groupedItems = <String, List<dynamic>>{};
+    
+    // 1. Expenses (excluding those linked to events)
+    final expenses = provider.filteredExpenses.where((e) => e.eventId == null || e.eventId!.trim().isEmpty).toList();
+    for (var expense in expenses) {
       final dateKey = DateFormat('yyyy-MM-dd').format(DateTime.parse(expense.date));
-      if (!groupedExpenses.containsKey(dateKey)) {
-        groupedExpenses[dateKey] = [];
+      if (!groupedItems.containsKey(dateKey)) groupedItems[dateKey] = [];
+      groupedItems[dateKey]!.add(expense);
+    }
+
+    // 2. Events (if filter is All or Expense, assuming Events count as "Spending")
+    if (provider.filterType == 'all' || provider.filterType == 'expense') {
+      for (var event in provider.events) {
+         // Use lastUpdated for sorting/grouping in history
+         final dateKey = DateFormat('yyyy-MM-dd').format(DateTime.parse(event.lastUpdated));
+         if (!groupedItems.containsKey(dateKey)) groupedItems[dateKey] = [];
+         groupedItems[dateKey]!.add(event);
       }
-      groupedExpenses[dateKey]!.add(expense);
     }
     
-    final sortedKeys = groupedExpenses.keys.toList()..sort((a, b) => b.compareTo(a));
+    final sortedKeys = groupedItems.keys.toList()..sort((a, b) => b.compareTo(a));
 
     return Scaffold(
       appBar: AppBar(
@@ -75,40 +90,51 @@ class TransactionsScreen extends StatelessWidget {
           Expanded(
             child: provider.isLoading 
               ? const Center(child: CircularProgressIndicator())
-              : groupedExpenses.isEmpty
+              : groupedItems.isEmpty
                 ? Center(child: Text(AppStrings.noTransactions, style: theme.textTheme.bodyLarge))
                 : ListView.builder(
                     padding: const EdgeInsets.all(16),
                     itemCount: sortedKeys.length,
                     itemBuilder: (context, index) {
                       final dateKey = sortedKeys[index];
-                      final expenses = groupedExpenses[dateKey]!;
+                      final items = groupedItems[dateKey]!;
+                      
+                      // Sort items within the day by time/lastUpdated desc
+                      items.sort((a, b) {
+                         DateTime dA = a is ExpenseModel ? DateTime.parse(a.date) : DateTime.parse((a as EventModel).lastUpdated);
+                         DateTime dB = b is ExpenseModel ? DateTime.parse(b.date) : DateTime.parse((b as EventModel).lastUpdated);
+                         return dB.compareTo(dA);
+                      });
+
                       final date = DateTime.parse(dateKey);
                       final inCycle = provider.isInCurrentCycle(date);
                       
                       String dateLabel;
                       if (inCycle) {
-                         // e.g. Friday 12
                          dateLabel = '${DateFormat('EEEE', AppStrings.language).format(date)} ${DateFormat('d', AppStrings.language).format(date)}';
                       } else {
-                         // e.g. Dec 28
                          dateLabel = DateFormat('MMM d', AppStrings.language).format(date);
                       }
 
                       // Calculate Daily Total
                       double dailyTotal = 0;
-                      for (var e in expenses) {
-                         if (e.type == 'income') {
-                           dailyTotal += e.amount;
-                         } else if (e.type == 'loan') {
-                            // For loans, we consider them 'spent' in this visualization 
-                            // unless we want to show net.
-                            // If we follow 'Cash Flow', Loan is Expense.
-                            dailyTotal -= e.amount;
-                         } else if (e.type == 'rollover') {
-                            dailyTotal += e.amount; // Rollover adds to daily positive flow (Start of month)
-                         } else {
-                           dailyTotal -= e.amount;
+                      for (var item in items) {
+                         if (item is ExpenseModel) {
+                           if (item.type == 'income') {
+                             dailyTotal += item.amount;
+                           } else if (item.type == 'loan') {
+                              dailyTotal -= item.amount;
+                           } else if (item.type == 'rollover') {
+                              dailyTotal += item.amount; 
+                           } else {
+                             dailyTotal -= item.amount;
+                           }
+                         } else if (item is EventModel) {
+                           // For Events, we subtract the total Amount?
+                           // Or is it just informational? If we removed expenses, we should subtract.
+                           // User said "event not expenses".
+                           // If filteredExpenses doesn't contain the event's expenses, then we must count the event's total.
+                           dailyTotal -= item.totalAmount;
                          }
                       }
                       
@@ -148,7 +174,16 @@ class TransactionsScreen extends StatelessWidget {
                           ),
                           
                           // Transactions for this day
-                          ...expenses.map((expense) => Padding(
+                          ...items.map((item) {
+                            if (item is EventModel) {
+                               return Padding(
+                                 padding: const EdgeInsets.only(bottom: 12),
+                                 child: _EventHistoryCard(event: item),
+                               );
+                            }
+                            
+                            final expense = item as ExpenseModel;
+                            return Padding(
                             padding: const EdgeInsets.only(bottom: 12),
                             child: ExpenseCard(
                               expense: expense,
@@ -200,7 +235,8 @@ class TransactionsScreen extends StatelessWidget {
                                   );
                               },
                             ),
-                          )),
+                          );
+                          }),
                         ],
                       );
                     },
@@ -246,6 +282,59 @@ class _FilterChip extends StatelessWidget {
             color: selected ? Colors.white : theme.textTheme.bodyMedium?.color,
             fontWeight: FontWeight.bold,
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EventHistoryCard extends StatelessWidget {
+  final EventModel event;
+  const _EventHistoryCard({required this.event});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+         Navigator.push(context, MaterialPageRoute(builder: (_) => EventDetailScreen(event: event)));
+      },
+      child: GlassContainer(
+        padding: const EdgeInsets.all(16),
+        borderRadius: BorderRadius.circular(20),
+        child: Row(
+          children: [
+            Container(
+              width: 48, height: 48,
+              decoration: BoxDecoration(
+                color: Colors.purple.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(Utils.getIcon(event.icon == 'Calendar' ? 'Plane' : event.icon), color: Colors.purple),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(event.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                       const Icon(LucideIcons.plane, size: 12, color: Colors.grey),
+                       const SizedBox(width: 4),
+                       Text(event.isClosed ? "Completed" : "Active Event", style: TextStyle(color: event.isClosed ? Colors.green : Colors.grey, fontSize: 12)),
+                    ],
+                  )
+                ],
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(Utils.formatCurrency(event.totalAmount), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.purpleAccent)),
+              ],
+            )
+          ],
         ),
       ),
     );

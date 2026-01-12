@@ -215,7 +215,12 @@ class FixedChargesScreen extends StatelessWidget {
           TextButton(
             onPressed: () async {
               Navigator.pop(ctx);
-              await provider.applyFixedChargesToCycle(targetYear, targetMonth, manualOnly: true);
+              await provider.applyFixedChargesToCycle(
+                  targetYear, 
+                  targetMonth, 
+                  manualOnly: true,
+                  customDate: DateTime.now() // Logic: Manual Apply uses "Now"
+              );
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text(AppStrings.chargesApplied)),
@@ -243,9 +248,11 @@ class FixedChargesScreen extends StatelessWidget {
         builder: (context, setState) {
           return AlertDialog(
             title: Text(charge == null ? AppStrings.addFixedCharge : "Edit Charge"), // "Edit Charge" needs adding? Let's use generic or add it
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+            content: SizedBox(
+              width: double.maxFinite,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                 children: [
                   TextField(
                     controller: nameCtrl,
@@ -299,15 +306,130 @@ class FixedChargesScreen extends StatelessWidget {
                     },
                   ),
                   const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(child: Text(AppStrings.dayOfMonth)),
-                      DropdownButton<int>(
-                        value: selectedDay,
-                        items: List.generate(28, (i) => i + 1).map((d) => DropdownMenuItem(value: d, child: Text(d.toString()))).toList(),
-                        onChanged: (val) => setState(() => selectedDay = val!),
-                      ),
-                    ],
+                  Builder(
+                    builder: (context) {
+                      // Logic to determine the split
+                      // Capture provider from the parent function scope explicitly if needed, or lookup again.
+                      // Since 'provider' variable is available in _showAddEditDialog, we can use it directly if closures work,
+                      // but the error suggests 'provider' is not found?
+                      // Ah, it's because I pasted this into a Builder block where 'provider' might be shadowed or I assumed it was a class member.
+                      // 'provider' is a local variable in _showAddEditDialog. It should be captured.
+                      // BUT if I cannot access it, I will re-fetch it.
+                      // Re-fetching provider inside builder context safely:
+                      final provider = Provider.of<ExpenseProvider>(context, listen: false);
+
+                      final s = provider.getSettingsForMonth(provider.selectedYear, provider.selectedMonth); 
+                      
+                      final startDay = s.startDay;
+                      final offset = s.monthOffset;
+                      
+                      // Calculate "Previous Month" (Start side) Name
+                      DateTime startSideDate = DateTime(provider.selectedYear, provider.selectedMonth + 1 + offset);
+                      String startSideName = Utils.getMonthName(startSideDate.month - 1); 
+                      
+                      // Calculate "Current Month" (End side) Name
+                      DateTime endSideDate = DateTime(provider.selectedYear, provider.selectedMonth + 1 + offset + 1);
+                      String endSideName = Utils.getMonthName(endSideDate.month - 1);
+                      
+                      // Range A: [startDay .. EndOfStartMonth]
+                      int maxDayA = Utils.getDaysInMonth(startSideDate.year, startSideDate.month);
+                      List<int> rangeA = [];
+                      if (startDay <= maxDayA) {
+                         // Fix: explicit int cast or definition for length
+                         int len = maxDayA - startDay + 1;
+                         rangeA = List.generate(len, (i) => startDay + i);
+                      }
+                      
+                      // Range B: [1 .. startDay - 1]
+                      // Note: End side is usually the main month.
+                      // Limit is startDay - 1. But wait, what if end month has fewer days?
+                      // The cycle ends at startDay of next month.
+                      // So we go usually up to startDay - 1.
+                      // Exception: If End Month length < startDay, we stop at End Month length.
+                      int maxDayB = Utils.getDaysInMonth(endSideDate.year, endSideDate.month);
+                      int limitB = startDay - 1;
+                      if (limitB > maxDayB) limitB = maxDayB;
+                      
+                      List<int> rangeB = List.generate(limitB, (i) => i + 1);
+                      
+                      // State for this widget (we need a local state variable for "Selected Period").
+                      // We can assume: If selectedDay is in Range A, select A. Else B.
+                      // BUT: This is ambiguous if both have Day 1? No, Range A starts at startDay.
+                      // Range B ends at startDay - 1.
+                      // They are mutually exclusive sets of integers?
+                      // NOT NECESSARILY.
+                      // If Start Day = 1. Range A: 1..31. Range B: Empty.
+                      // If Start Day = 15. Range A: 15..31. Range B: 1..14.
+                      // They are mutually exclusive!
+                      // So we don't strictly need a radio button for data model, 
+                      // BUT user requested "Pick December" vs "Pick January".
+                      // So we can visually separate them.
+                      
+                      bool inPeriodA = selectedDay >= startDay;
+                      
+                      return Column(
+                         crossAxisAlignment: CrossAxisAlignment.start,
+                         children: [
+                           Text(AppStrings.dayOfMonth, style: TextStyle(fontWeight: FontWeight.bold)),
+                           const SizedBox(height: 8),
+                           // Period A Selector (Start of Cycle)
+                           if (rangeA.isNotEmpty)
+                             RadioListTile<bool>(
+                               title: Text("$startSideName (${rangeA.first} - ${rangeA.last})"),
+                               value: true,
+                               groupValue: inPeriodA,
+                               onChanged: (val) {
+                                  // Switch to Period A
+                                  // Default to first day of A? Or keep day if in range?
+                                  // Keep day if in range A? No, usually day is small (e.g. 5).
+                                  // So if switching from B(5) to A, we must change to >= 26.
+                                  setState(() {
+                                     selectedDay = rangeA.first;
+                                  });
+                               },
+                               contentPadding: EdgeInsets.zero,
+                               dense: true,
+                             ),
+                             
+                           // Period B Selector (End of Cycle)
+                           if (rangeB.isNotEmpty)
+                             RadioListTile<bool>(
+                               title: Text("$endSideName (1 - ${rangeB.last})"),
+                               value: false, // Represents Period B
+                               groupValue: inPeriodA,
+                               onChanged: (val) {
+                                  // Switch to Period B
+                                  setState(() {
+                                     selectedDay = rangeB.isNotEmpty ? rangeB.first : 1;
+                                  });
+                               },
+                               contentPadding: EdgeInsets.zero,
+                               dense: true,
+                             ),
+                             
+                           const SizedBox(height: 8),
+                           // The actual Dropdown for the selected period
+                           Container(
+                             padding: const EdgeInsets.symmetric(horizontal: 12),
+                             decoration: BoxDecoration(
+                               border: Border.all(color: Colors.grey.shade300),
+                               borderRadius: BorderRadius.circular(8),
+                             ),
+                             child: DropdownButtonHideUnderline(
+                               child: DropdownButton<int>(
+                                 isExpanded: true,
+                                 value: selectedDay,
+                                 // Ensure selectedDay is valid for the list, otherwise fallback
+                                 items: (inPeriodA ? rangeA : rangeB).map((d) => DropdownMenuItem(value: d, child: Text(d.toString()))).toList(),
+                                 onChanged: (val) {
+                                    if (val != null) setState(() => selectedDay = val);
+                                 },
+                               ),
+                             ),
+                           ),
+                         ],
+                      );
+                    }
                   ),
                   const Divider(height: 32),
                   SwitchListTile(
@@ -329,6 +451,7 @@ class FixedChargesScreen extends StatelessWidget {
                 ],
               ),
             ),
+          ),
             actions: [
               TextButton(onPressed: () => Navigator.pop(ctx), child: Text(AppStrings.cancel)),
               TextButton(
@@ -466,7 +589,12 @@ class _ChargeTile extends StatelessWidget {
           TextButton(
             onPressed: () async {
               Navigator.pop(ctx);
-              await provider.applyFixedChargesToCycle(year, month, chargeId: charge.id);
+              await provider.applyFixedChargesToCycle(
+                  year, 
+                  month, 
+                  chargeId: charge.id,
+                  customDate: DateTime.now() // Individual apply uses "Now"
+              );
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text("${charge.name} ${AppStrings.chargesApplied}")),

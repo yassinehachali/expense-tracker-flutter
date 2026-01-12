@@ -15,6 +15,7 @@ import '../../core/global_events.dart';
 import 'loans_manager_screen.dart';
 import 'fixed_charges_screen.dart';
 import 'insurance_screen.dart';
+import 'events_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -67,7 +68,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ListTile(
               leading: const Icon(LucideIcons.briefcase),
               title: Text(AppStrings.salaryCycleOption),
-              subtitle: Text("${Utils.formatCurrency(expenseProvider.currentCycleSalary)} (${Utils.formatDate(expenseProvider.currentCycleStart)} - ${Utils.formatDate(expenseProvider.currentCycleEnd)})"),
+              subtitle: Text("${expenseProvider.isPrivacyEnabled ? Utils.formatCurrency(expenseProvider.currentCycleSalary) : "*****"} (${Utils.formatDate(expenseProvider.currentCycleStart)} - ${Utils.formatDate(expenseProvider.currentCycleEnd)})"),
               trailing: const Icon(Icons.chevron_right),
               onTap: () {
                 _showSalaryDialog(context, expenseProvider);
@@ -122,6 +123,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
               trailing: const Icon(Icons.chevron_right),
               onTap: () {
                 Navigator.push(context, MaterialPageRoute(builder: (_) => const LoansManagerScreen()));
+              },
+            ),
+            ListTile(
+              leading: const Icon(LucideIcons.coins),
+              title: Text(AppStrings.loansManager),
+              subtitle: Text(AppStrings.manageDebtsDesc),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const LoansManagerScreen()));
+              },
+            ),
+
+            ListTile(
+              leading: const Icon(LucideIcons.plane, color: Colors.purple),
+              title: const Text("Events Manager"),
+              subtitle: const Text("Track expenses for trips & events"),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const EventsScreen()));
               },
             ),
             
@@ -354,6 +374,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
           
           final startMonthName = Utils.getMonthName(normalizedIndex);
 
+          // Calculate Max Days for the selected start month
+          int sMonth = selectedMonth + 1 + selectedOffset;
+          int sYear = selectedYear;
+          if (sMonth < 1) { sMonth = 12; sYear--; }
+          if (sMonth > 12) { sMonth = 1; sYear++; }
+          
+          final maxDays = Utils.getDaysInMonth(sYear, sMonth);
+          // Clamp selectedDay if needed
+          if (selectedDay > maxDays) selectedDay = maxDays;
+
           return AlertDialog(
             title: Text("Cycle for $monthName $selectedYear"),
             content: SingleChildScrollView(
@@ -393,7 +423,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       // Day Selector
                       DropdownButton<int>(
                         value: selectedDay,
-                        items: List.generate(28, (index) => index + 1).map((day) {
+                        items: List.generate(maxDays, (index) => index + 1).map((day) {
                           return DropdownMenuItem(
                             value: day,
                             child: Text("${AppStrings.cycleStartDay}$day"),

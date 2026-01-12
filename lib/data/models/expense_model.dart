@@ -14,7 +14,8 @@ class ExpenseModel {
   final double returnedAmount;
   final String? loanee;
   final String? relatedLoanId; // ID of the Loan this transaction is repaying
-  final String? originChargeId; // ID of the FixedCharge this originated from
+  final String? eventId; // New: Event Association
+  final String? originChargeId; // ID of the Fixed Charge if auto-generated
   final bool excludeFromBalance;
 
   final DateTime? createdAt; // Can be null locally before sync
@@ -33,6 +34,7 @@ class ExpenseModel {
     this.relatedLoanId,
     this.createdAt,
     this.excludeFromBalance = false,
+    this.eventId,
   });
 
   Map<String, dynamic> toMap() {
@@ -47,6 +49,7 @@ class ExpenseModel {
       if (loanee != null) 'loanee': loanee,
       if (originChargeId != null) 'originChargeId': originChargeId,
       if (relatedLoanId != null) 'relatedLoanId': relatedLoanId,
+      if (eventId != null) 'eventId': eventId,
       if (createdAt != null) 'createdAt': Timestamp.fromDate(createdAt!),
       'excludeFromBalance': excludeFromBalance,
       // Note: We don't save 'id' as a field, it's the doc key
@@ -78,6 +81,7 @@ class ExpenseModel {
       relatedLoanId: data['relatedLoanId'],
       createdAt: createdDate,
       excludeFromBalance: data['excludeFromBalance'] ?? false,
+      eventId: data['eventId'],
     );
   }
 
@@ -110,6 +114,7 @@ class ExpenseModel {
       relatedLoanId: relatedLoanId ?? this.relatedLoanId,
       createdAt: createdAt ?? this.createdAt,
       excludeFromBalance: excludeFromBalance ?? this.excludeFromBalance,
+      eventId: eventId ?? this.eventId,
     );
   }
 }

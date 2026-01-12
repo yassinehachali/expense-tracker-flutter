@@ -9,6 +9,9 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'transactions_screen.dart'; // Not needed if we use callback
 import 'add_expense_screen.dart'; // Needed for Edit
 import 'insurance_screen.dart'; // Redirect for insurance claims
+import 'event_detail_screen.dart'; // Added Import
+import '../../data/models/event_model.dart'; // Added Import
+import '../../data/models/expense_model.dart'; // Added Explicit Import
 import '../../providers/expense_provider.dart';
 import '../../core/constants.dart';
 import '../../core/utils.dart';
@@ -64,6 +67,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final chartData = provider.chartData;
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+
+    // Mixed List Logic
+    final mixedList = _getMixedList(provider);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -249,9 +255,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           const SizedBox(height: 24),
 
           // Total Balance / Remaining
-          GestureDetector(
-            onTap: widget.onViewAll,
-            child: GlassContainer(
+          GlassContainer(
             width: double.infinity,
             padding: const EdgeInsets.all(24),
             gradient: LinearGradient(
@@ -268,12 +272,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(AppStrings.totalRemaining, style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 14)),
-                    const Icon(LucideIcons.wallet, color: Colors.white, size: 20),
+                    InkWell(
+                      onTap: () => provider.togglePrivacy(),
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          provider.isPrivacyEnabled ? LucideIcons.eye : LucideIcons.eyeOff, 
+                          color: Colors.white, 
+                          size: 18
+                        ),
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  Utils.formatCurrency(stats['remaining'] ?? 0),
+                  provider.isPrivacyEnabled ? Utils.formatCurrency(stats['remaining'] ?? 0) : "*****",
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 32,
@@ -289,6 +308,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                        amount: stats['totalIncome'] ?? 0,
                        icon: LucideIcons.arrowUpCircle,
                        color: Colors.greenAccent,
+                       isVisible: provider.isPrivacyEnabled,
                      ),
                      Container(height: 40, width: 1, color: Colors.white.withOpacity(0.2), margin: const EdgeInsets.symmetric(horizontal: 24)),
                      _MiniStat(
@@ -296,11 +316,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                        amount: stats['totalSpent'] ?? 0,
                        icon: LucideIcons.arrowDownCircle,
                        color: Colors.redAccent,
+                       isVisible: provider.isPrivacyEnabled,
                      ),
                   ],
                 )
               ],
-            ),
             ),
           ),
           
@@ -424,10 +444,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ListView.separated(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            itemCount: provider.filteredExpenses.take(5).length,
+            itemCount: mixedList.take(5).length,
             separatorBuilder: (_, __) => const SizedBox(height: 12),
             itemBuilder: (ctx, index) {
-               final expense = provider.filteredExpenses[index];
+               final item = mixedList[index];
+               
+               if (item is EventModel) {
+                  return _EventCard(event: item);
+               }
+               
+               final expense = item as ExpenseModel;
                return ExpenseCard(
                  expense: expense,
                  onTap: () {
@@ -504,6 +530,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ],
       ),
     );
+  }
+
+  List<dynamic> _getMixedList(ExpenseProvider provider) {
+     // 1. Get Expenses for current view (filtered by Provider mostly)
+     // BUT we must exclude those that belong to an Event
+     // 1. Get Expenses for current view (filtered by Provider mostly)
+     // BUT we must exclude those that belong to an Event
+     final viewExpenses = provider.filteredExpenses.where((e) => e.eventId == null || e.eventId!.trim().isEmpty).toList();
+
+     // 2. Get Events relevant to current view?
+     // User requirement: "reactive that every time we add a new expense to the event , the event becomes first"
+     // This implies we should show events that were UPDATED in this timeframe.
+     final start = provider.currentCycleStart;
+     final end = provider.currentCycleEnd;
+     
+     final activeEvents = provider.events.where((e) {
+        final lastUp = DateTime.parse(e.lastUpdated);
+        return lastUp.isAfter(start) && lastUp.isBefore(end);
+     }).toList();
+
+     // 3. Merge
+     final List<dynamic> mixed = [...viewExpenses, ...activeEvents];
+
+     // 4. Sort
+     mixed.sort((a, b) {
+        DateTime dateA;
+        if (a is ExpenseModel) dateA = DateTime.parse(a.date);
+        else dateA = DateTime.parse((a as EventModel).lastUpdated);
+
+        DateTime dateB;
+        if (b is ExpenseModel) dateB = DateTime.parse(b.date);
+        else dateB = DateTime.parse((b as EventModel).lastUpdated);
+        
+        return dateB.compareTo(dateA); // Descending
+     });
+
+     return mixed;
   }
 
   Widget _buildPieChart(List<Map<String, dynamic>> chartData, double totalSpent, ExpenseProvider provider) {
@@ -608,16 +671,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
         color = Colors.green;
         iconKey = 'Wallet';
       } else {
-        final allCats = provider.categories;
-        CategoryModel? catConfig;
+        // Check if this is an Event Name (from chart grouping)
         try {
-          catConfig = allCats.firstWhere((c) => c.name.toLowerCase() == name.toLowerCase());
-        } catch (_) {}
-        
-        color = catConfig != null 
-            ? hexToColor(catConfig.color) 
-            : hexToColor('#999999');
-        iconKey = catConfig?.icon ?? 'MoreHorizontal';
+          final event = provider.events.firstWhere((e) => e.name == name);
+           color = Colors.purple;
+           iconKey = 'Plane'; // User requested Plane icon for events (or specific to travel events)
+        } catch (_) {
+          // Not an event, check Categories
+          final allCats = provider.categories;
+          CategoryModel? catConfig;
+          try {
+            catConfig = allCats.firstWhere((c) => c.name.toLowerCase() == name.toLowerCase());
+          } catch (_) {}
+          
+          color = catConfig != null 
+              ? hexToColor(catConfig.color) 
+              : hexToColor('#999999');
+          iconKey = catConfig?.icon ?? 'MoreHorizontal';
+        }
       }
       
       return _CategoryDetails(AppStrings.getCategoryName(name), value, color, iconKey);
@@ -758,15 +829,22 @@ void _showRolloverDialog(BuildContext context, ExpenseProvider provider) {
         ],
       ),
     );
-}
+  }
 
 class _MiniStat extends StatelessWidget {
   final String label;
   final double amount;
   final IconData icon;
   final Color color;
+  final bool isVisible;
 
-  const _MiniStat({required this.label, required this.amount, required this.icon, required this.color});
+  const _MiniStat({
+    required this.label, 
+    required this.amount, 
+    required this.icon, 
+    required this.color,
+    this.isVisible = true,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -782,10 +860,64 @@ class _MiniStat extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(
-          Utils.formatCurrency(amount),
+          isVisible ? Utils.formatCurrency(amount) : "*****",
           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
         ),
       ],
+    );
+  }
+}
+
+class _EventCard extends StatelessWidget {
+  final EventModel event;
+  const _EventCard({required this.event});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+         Navigator.push(context, MaterialPageRoute(builder: (_) => EventDetailScreen(event: event)));
+      },
+      child: GlassContainer(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.purple.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(Utils.getIcon(event.icon == 'Calendar' ? 'Plane' : event.icon), color: Colors.purple),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(event.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                       const Icon(LucideIcons.plane, size: 12, color: Colors.grey),
+                       const SizedBox(width: 4),
+                       Text(event.isClosed ? "Completed" : "Active Event", style: TextStyle(color: event.isClosed ? Colors.green : Colors.grey, fontSize: 12)),
+                    ],
+                  )
+                ],
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(Utils.formatCurrency(event.totalAmount), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.purpleAccent)),
+                const SizedBox(height: 4),
+                Text(Utils.formatDate(DateTime.parse(event.lastUpdated)), style: const TextStyle(color: Colors.grey, fontSize: 10)),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

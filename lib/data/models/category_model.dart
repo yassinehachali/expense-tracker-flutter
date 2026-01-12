@@ -3,11 +3,13 @@ class CategoryModel {
   final String name;
   final String color;
   final String icon;
+  final int order;
 
   CategoryModel({
     required this.name,
     required this.color,
     required this.icon,
+    this.order = 0,
   });
 
   Map<String, dynamic> toMap() {
@@ -15,6 +17,7 @@ class CategoryModel {
       'name': name,
       'color': color,
       'icon': icon,
+      'order': order,
     };
   }
 
@@ -23,6 +26,7 @@ class CategoryModel {
       name: map['name'] ?? '',
       color: map['color'] ?? '#000000',
       icon: map['icon'] ?? 'MoreHorizontal',
+      order: map['order'] ?? 0,
     );
   }
 }
