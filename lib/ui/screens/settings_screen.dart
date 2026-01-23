@@ -16,6 +16,7 @@ import 'loans_manager_screen.dart';
 import 'fixed_charges_screen.dart';
 import 'insurance_screen.dart';
 import 'events_screen.dart';
+import 'monthly_report_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -76,6 +77,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
 
             ListTile(
+              leading: const Icon(LucideIcons.barChart2, color: Colors.purple),
+              title: const Text("Monthly Analysis"),
+              subtitle: const Text("Detailed reports and filters"),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const MonthlyReportScreen()));
+              },
+            ),
+
+            ListTile(
               leading: const Icon(LucideIcons.history, color: Colors.green),
               title: Text(AppStrings.rolloverHistory ?? "Rollover History"),
               subtitle: Text(AppStrings.manageRollovers ?? "Manage monthly carry-overs"),
@@ -125,15 +136,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Navigator.push(context, MaterialPageRoute(builder: (_) => const LoansManagerScreen()));
               },
             ),
-            ListTile(
-              leading: const Icon(LucideIcons.coins),
-              title: Text(AppStrings.loansManager),
-              subtitle: Text(AppStrings.manageDebtsDesc),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const LoansManagerScreen()));
-              },
-            ),
+
 
             ListTile(
               leading: const Icon(LucideIcons.plane, color: Colors.purple),

@@ -14,8 +14,22 @@ import 'event_detail_screen.dart';
 import '../widgets/glass_container.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
-class TransactionsScreen extends StatelessWidget {
+class TransactionsScreen extends StatefulWidget {
   const TransactionsScreen({super.key});
+
+  @override
+  State<TransactionsScreen> createState() => _TransactionsScreenState();
+}
+
+class _TransactionsScreenState extends State<TransactionsScreen> {
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -26,21 +40,43 @@ class TransactionsScreen extends StatelessWidget {
     final groupedItems = <String, List<dynamic>>{};
     
     // 1. Expenses (excluding those linked to events)
-    final expenses = provider.filteredExpenses.where((e) => e.eventId == null || e.eventId!.trim().isEmpty).toList();
+    List<ExpenseModel> expenses = provider.filteredExpenses.where((e) => e.eventId == null || e.eventId!.trim().isEmpty).toList();
+    
+    // 2. Events (if filter is All or Expense, assuming Events count as "Spending")
+    List<EventModel> events = [];
+    if (provider.filterType == 'all' || provider.filterType == 'expense') {
+      events = provider.events;
+    }
+
+    // --- Search Logic ---
+    if (_searchQuery.isNotEmpty) {
+      final query = _searchQuery.toLowerCase();
+      
+      expenses = expenses.where((e) {
+         final matchesDesc = e.description.toLowerCase().contains(query);
+         final matchesCat = e.category.toLowerCase().contains(query);
+         final matchesLoanee = e.loanee?.toLowerCase().contains(query) ?? false;
+         return matchesDesc || matchesCat || matchesLoanee;
+      }).toList();
+
+      events = events.where((e) {
+         final matchesName = e.name.toLowerCase().contains(query);
+         return matchesName;
+      }).toList();
+    }
+    // --------------------
+
     for (var expense in expenses) {
       final dateKey = DateFormat('yyyy-MM-dd').format(DateTime.parse(expense.date));
       if (!groupedItems.containsKey(dateKey)) groupedItems[dateKey] = [];
       groupedItems[dateKey]!.add(expense);
     }
 
-    // 2. Events (if filter is All or Expense, assuming Events count as "Spending")
-    if (provider.filterType == 'all' || provider.filterType == 'expense') {
-      for (var event in provider.events) {
+    for (var event in events) {
          // Use lastUpdated for sorting/grouping in history
          final dateKey = DateFormat('yyyy-MM-dd').format(DateTime.parse(event.lastUpdated));
          if (!groupedItems.containsKey(dateKey)) groupedItems[dateKey] = [];
          groupedItems[dateKey]!.add(event);
-      }
     }
     
     final sortedKeys = groupedItems.keys.toList()..sort((a, b) => b.compareTo(a));
@@ -61,14 +97,20 @@ class TransactionsScreen extends StatelessWidget {
               children: [
                 _FilterChip(
                   label: AppStrings.filterAll, 
-                  selected: provider.filterType == 'all',
+                  selected: provider.filterType == 'all' && provider.filterCategory == null,
                   onTap: () => provider.setFilterType('all'),
                 ),
                 const SizedBox(width: 8),
                 _FilterChip(
                   label: AppStrings.filterExpenses, 
-                  selected: provider.filterType == 'expense',
+                  selected: provider.filterType == 'expense' && provider.filterCategory == null,
                   onTap: () => provider.setFilterType('expense'),
+                ),
+                const SizedBox(width: 8),
+                _FilterChip(
+                  label: 'Categories', 
+                  selected: provider.filterCategory != null,
+                  onTap: () => _showCategoryFilter(context, provider),
                 ),
                 const SizedBox(width: 8),
                 _FilterChip(
@@ -86,12 +128,40 @@ class TransactionsScreen extends StatelessWidget {
             ),
           ),
           
+          // Search Bar
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Search transactions...',
+                prefixIcon: const Icon(Icons.search),
+                filled: true,
+                fillColor: theme.cardColor,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+              ),
+              onChanged: (val) {
+                setState(() {
+                  _searchQuery = val;
+                });
+              },
+            ),
+          ),
+          
+          // Category Summary Header (if filtered by Category)
+          if (provider.filterCategory != null)
+             _CategorySummary(category: provider.filterCategory!, amount: provider.filteredExpenses.fold(0.0, (sum, e) => sum + e.amount)),
+
           // List
           Expanded(
             child: provider.isLoading 
               ? const Center(child: CircularProgressIndicator())
               : groupedItems.isEmpty
-                ? Center(child: Text(AppStrings.noTransactions, style: theme.textTheme.bodyLarge))
+                ? Center(child: Text(_searchQuery.isEmpty ? AppStrings.noTransactions : "No results found", style: theme.textTheme.bodyLarge))
                 : ListView.builder(
                     padding: const EdgeInsets.all(16),
                     itemCount: sortedKeys.length,
@@ -130,10 +200,6 @@ class TransactionsScreen extends StatelessWidget {
                              dailyTotal -= item.amount;
                            }
                          } else if (item is EventModel) {
-                           // For Events, we subtract the total Amount?
-                           // Or is it just informational? If we removed expenses, we should subtract.
-                           // User said "event not expenses".
-                           // If filteredExpenses doesn't contain the event's expenses, then we must count the event's total.
                            dailyTotal -= item.totalAmount;
                          }
                       }
@@ -246,6 +312,57 @@ class TransactionsScreen extends StatelessWidget {
       ),
     );
   }
+
+  void _showCategoryFilter(BuildContext context, ExpenseProvider provider) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) {
+        final categories = provider.categories;
+        return Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+               const Text("Filter by Category", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+               const SizedBox(height: 16),
+               SizedBox(
+                 height: 300,
+                 child: GridView.builder(
+                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 4, mainAxisSpacing: 12, crossAxisSpacing: 12),
+                   itemCount: categories.length,
+                   itemBuilder: (ctx, index) {
+                      final cat = categories[index];
+                      return GestureDetector(
+                        onTap: () {
+                          provider.setFilterCategory(cat.name);
+                          Navigator.pop(ctx);
+                        },
+                        child: Column(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Utils.hexToColor(cat.color).withOpacity(0.1),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(Utils.getIcon(cat.icon), color: Utils.hexToColor(cat.color)),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(cat.name, style: const TextStyle(fontSize: 10), overflow: TextOverflow.ellipsis),
+                          ],
+                        ),
+                      );
+                   },
+                 ),
+               )
+            ],
+          ),
+        );
+      }
+    );
+  }
 }
 
 class _FilterChip extends StatelessWidget {
@@ -334,6 +451,37 @@ class _EventHistoryCard extends StatelessWidget {
                 Text(Utils.formatCurrency(event.totalAmount), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.purpleAccent)),
               ],
             )
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CategorySummary extends StatelessWidget {
+  final String category;
+  final double amount;
+
+  const _CategorySummary({required this.category, required this.amount});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      child: GlassContainer(
+        padding: const EdgeInsets.all(20),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+             Column(
+               crossAxisAlignment: CrossAxisAlignment.start,
+               children: [
+                 Text("Total Spent on", style: TextStyle(color: Colors.grey[400], fontSize: 12)),
+                 const SizedBox(height: 4),
+                 Text(category, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+               ],
+             ),
+             Text(Utils.formatCurrency(amount), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 24, color: Colors.orangeAccent)),
           ],
         ),
       ),

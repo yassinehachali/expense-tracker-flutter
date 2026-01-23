@@ -68,6 +68,12 @@ class ExpenseProvider with ChangeNotifier {
   void togglePrivacy() {
     _isPrivacyEnabled = !_isPrivacyEnabled;
     notifyListeners();
+    _savePrivacyPreference();
+  }
+
+  Future<void> _savePrivacyPreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('is_privacy_enabled', _isPrivacyEnabled);
   }
 
   List<ExpenseModel> get expenses => _expenses;
@@ -157,6 +163,11 @@ class ExpenseProvider with ChangeNotifier {
   
   // Returns salary for current view
   double get currentCycleSalary => _getEffectiveSettings(_selectedYear, _selectedMonth).salary;
+
+  // Public accessor for specific month salary
+  double getSalaryForMonth(int year, int month) {
+    return _getEffectiveSettings(year, month).salary;
+  }
   
   // Returns start date for CURRENTLY selected view
   DateTime get currentCycleStart => getCycleStartDate(_selectedYear, _selectedMonth);
@@ -315,6 +326,10 @@ class ExpenseProvider with ChangeNotifier {
       _selectedMonth = prefs.getInt('last_view_month')!;
       changed = true;
     }
+    if (prefs.containsKey('is_privacy_enabled')) {
+      _isPrivacyEnabled = prefs.getBool('is_privacy_enabled')!;
+      changed = true;
+    }
     if (changed) notifyListeners();
   }
 
@@ -324,10 +339,23 @@ class ExpenseProvider with ChangeNotifier {
     await prefs.setInt('last_view_month', _selectedMonth);
   }
 
+
+  String? _filterCategory; // null = no category filter
+
+  // ... (Other Setters)
+
   void setFilterType(String type) {
     _filterType = type;
+    _filterCategory = null; // Reset category when changing main filter type
     notifyListeners();
   }
+
+  void setFilterCategory(String? category) {
+    _filterCategory = category;
+    notifyListeners();
+  }
+  
+  String? get filterCategory => _filterCategory;
 
   List<ExpenseModel> get filteredExpenses {
     // Optimization: Calculate cycle boundary once
@@ -341,25 +369,13 @@ class ExpenseProvider with ChangeNotifier {
 
       if (!inCycle && exp.type != 'loan') return false; 
       
-      if (exp.type == 'loan') {
-         // If filter is explicitly 'loan', show ALL loans (active and returned history)
-         if (_filterType == 'loan') return true;
-         
-         // Fix: Only show loans that exist relative to this cycle (Date < NextCycleStart)
-         // Prevents Future Loans from leaking into Past Months
-         // Using 'cutoff' handles time components correctly (e.g. Last Day 23:59 is < Next Day 00:00)
-         if (d.isAfter(cutoff) || d.isAtSameMomentAs(cutoff)) return false; 
-         
-         // Otherwise (Dashboard/All), show active loans OR loans from this cycle
-         return !exp.isReturned || inCycle;
-      }
-
       if (_filterType == 'expense') {
         return inCycle && (exp.type == 'expense' || exp.type == null);
       }
       if (_filterType == 'income') {
         return inCycle && exp.type == 'income';
       }
+      // Strict cycle check for EVERYTHING (including loans)
       return inCycle;
     }).toList();
 
@@ -372,9 +388,16 @@ class ExpenseProvider with ChangeNotifier {
        result = result.where((e) => e.type == 'loan').toList();
     }
     
+    // Category Filter
+    if (_filterCategory != null) {
+      result = result.where((e) => e.category == _filterCategory).toList();
+    }
+    
+    // Inject Rollover (only for 'all' or specific view logic)
+    
     // Inject Rollover (only for 'all' or specific view logic)
     // User wants to see it as a transaction.
-    if (_filterType == 'all' || _filterType == 'income') { // Maybe show in income/all?
+    if ((_filterType == 'all' || _filterType == 'income') && _filterCategory == null) { // Maybe show in income/all?
       final rollover = _currentRolloverAmount;
       if (rollover > 0) {
         int prevMonth = _selectedMonth - 1;
@@ -472,6 +495,26 @@ class ExpenseProvider with ChangeNotifier {
        return 0.0;
     }
     
+    return _calculateMonthlyBalance(prevYear, prevMonth);
+  }
+
+  // Public accessor for specific month rollover
+  double getRolloverForMonth(int year, int month) {
+    int prevMonth = month - 1;
+    int prevYear = year;
+    if (prevMonth < 0) {
+      prevMonth = 11;
+      prevYear--;
+    }
+    
+    final currentKey = "$year-${month + 1}";
+    if (!_settings.acceptedRollovers.contains(currentKey)) {
+        // If not accepted for this specific month, it's 0 (unless we want to show 'Potential'?)
+        // User asked for "Using remaining balance of month before".
+        // Usually we respect the "Rollover Accepted" flag. 
+        // If they didn't accept it, it shouldn't be part of the "Starting Balance" for the new month essentially.
+        return 0.0;
+    }
     return _calculateMonthlyBalance(prevYear, prevMonth);
   }
 
