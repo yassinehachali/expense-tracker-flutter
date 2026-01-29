@@ -70,6 +70,21 @@ class BeneficiaryDetailScreen extends StatelessWidget {
                 ),
               ),
               
+              if (balance.abs() > 0.01)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: ElevatedButton.icon(
+                    onPressed: () => _showRepayDialog(context, beneficiary.name, balance.abs(), balance < 0, provider),
+                    icon: Icon(balance < 0 ? LucideIcons.arrowUpRight : LucideIcons.arrowDownLeft),
+                    label: Text(balance < 0 ? "Repay Debt" : "Receive Payment"),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: balance < 0 ? Colors.orange : Colors.green,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(double.infinity, 48),
+                    ),
+                  ),
+                ),
+              
               const Divider(),
               
               Expanded(
@@ -128,6 +143,55 @@ class BeneficiaryDetailScreen extends StatelessWidget {
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
             child: Text(AppStrings.delete),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showRepayDialog(BuildContext context, String personName, double amount, bool isDebt, ExpenseProvider provider) {
+    final controller = TextEditingController();
+    
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(isDebt ? "Repay Debt" : "Receive Payment"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+             Text("Total Outstanding: ${Utils.formatCurrency(amount)}"),
+             const SizedBox(height: 16),
+             TextField(
+               controller: controller,
+               keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText: isDebt ? "Amount to Repay" : "Amount Received",
+                  hintText: "0.00",
+                  border: const OutlineInputBorder(),
+                  prefixText: "${Utils.currencySymbol} ",
+                ),
+             ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(AppStrings.cancel)),
+          ElevatedButton(
+            onPressed: () {
+               final val = double.tryParse(controller.text);
+               if (val == null || val <= 0) return;
+               if (val > amount + 0.01) { 
+                  // Could show error
+                  return;
+               }
+               
+               // Use Bulk Repayment
+               // If isDebt (I owe them), type is 'borrow' (I borrowed from them)
+               // If !isDebt (They owe me), type is 'loan' (I lent to them)
+               provider.repayBeneficiary(personName, val, isDebt ? 'borrow' : 'loan');
+               Navigator.pop(ctx);
+            }, 
+            child: Text(AppStrings.confirm)
           ),
         ],
       ),

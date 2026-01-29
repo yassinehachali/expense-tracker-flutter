@@ -181,14 +181,47 @@ class _LoansList extends StatelessWidget {
       );
     }
 
-    final sorted = List<ExpenseModel>.from(loans)
-      ..sort((a, b) => b.date.compareTo(a.date));
+    // 1. Group by Person
+    final Map<String, List<ExpenseModel>> grouped = {};
+    for (var loan in loans) {
+      final name = loan.loanee ?? loan.description; // Fallback
+      if (!grouped.containsKey(name)) {
+        grouped[name] = [];
+      }
+      grouped[name]!.add(loan);
+    }
+
+    // 2. Create Summary Objects
+    final List<_PersonLoanSummary> summaries = [];
+    grouped.forEach((name, personLoans) {
+      double totalAmount = 0;
+      double totalReturned = 0;
+      for (var l in personLoans) {
+        totalAmount += l.amount;
+        totalReturned += l.returnedAmount;
+      }
+      if (totalAmount > 0) { // Only show if there's actual history
+         summaries.add(_PersonLoanSummary(
+           name: name,
+           totalAmount: totalAmount,
+           totalReturned: totalReturned,
+           loans: personLoans,
+         ));
+      }
+    });
+
+    // 3. Sort by "Most Remaining" desc
+    summaries.sort((a, b) {
+      final remA = a.totalAmount - a.totalReturned;
+      final remB = b.totalAmount - b.totalReturned;
+      return remB.compareTo(remA);
+    });
 
     double totalActive = 0;
     double totalRepaid = 0;
-    for (var l in sorted) {
-      totalActive += l.amount;
-      totalRepaid += l.returnedAmount;
+    for (var s in summaries) {
+      totalActive += s.totalAmount;
+      totalRepaid += s.totalReturned;
     }
 
     final theme = Theme.of(context);
@@ -198,7 +231,7 @@ class _LoansList extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          // Header Card
+          // Header Card (Overall Total)
           GlassContainer(
             padding: const EdgeInsets.all(20),
             borderRadius: BorderRadius.circular(20),
@@ -221,7 +254,7 @@ class _LoansList extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      Utils.formatCurrency(totalActive), 
+                      Utils.formatCurrency(totalActive - totalRepaid), 
                       style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)
                     ),
                     const SizedBox(height: 4),
@@ -237,14 +270,15 @@ class _LoansList extends StatelessWidget {
           ),
           const SizedBox(height: 20),
 
+          // List of People
           ListView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            itemCount: sorted.length,
+            itemCount: summaries.length,
             itemBuilder: (ctx, index) {
-              final item = sorted[index];
-              final remaining = item.amount - item.returnedAmount;
-              final isFullyReturned = item.isReturned;
+              final summary = summaries[index];
+              final remaining = summary.totalAmount - summary.totalReturned;
+              final isFullyReturned = remaining <= 0.01; // Tolerance
 
               return Card(
                 margin: const EdgeInsets.only(bottom: 12),
@@ -275,18 +309,18 @@ class _LoansList extends StatelessWidget {
                                crossAxisAlignment: CrossAxisAlignment.start,
                                children: [
                                  Text(
-                                   item.description.isNotEmpty ? item.description : (item.loanee ?? AppStrings.unknownLender),
+                                   summary.name,
                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                                  ),
                                  Text(
-                                   Utils.formatDate(DateTime.parse(item.date)),
+                                   "${summary.loans.length} transactions",
                                    style: const TextStyle(fontSize: 12, color: Colors.grey),
                                  ),
                                ],
                              ),
                            ),
                            Text(
-                             Utils.formatCurrency(item.amount),
+                             Utils.formatCurrency(summary.totalAmount),
                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                            ),
                          ],
@@ -295,7 +329,7 @@ class _LoansList extends StatelessWidget {
                        ClipRRect(
                          borderRadius: BorderRadius.circular(4),
                          child: LinearProgressIndicator(
-                           value: item.amount == 0 ? 0 : (item.returnedAmount / item.amount),
+                           value: summary.totalAmount == 0 ? 0 : (summary.totalReturned / summary.totalAmount),
                            backgroundColor: theme.dividerColor.withOpacity(0.2),
                            color: isFullyReturned ? Colors.green : primaryColor,
                            minHeight: 6,
@@ -313,32 +347,12 @@ class _LoansList extends StatelessWidget {
                               ),
                             ),
                             
-                            Row(
-                              children: [
-                                if (!isFullyReturned)
-                                  TextButton(
-                                    onPressed: () => _showRepayDialog(context, item, provider, isDebts),
-                                    child: Text(isDebts ? AppStrings.repay : AppStrings.markAsReturned), 
-                                  ),
-                                PopupMenuButton<String>(
-                                  onSelected: (val) {
-                                    if (val == 'edit') {
-                                       Navigator.push(context, MaterialPageRoute(builder: (_) => AddExpenseScreen(expenseToEdit: item)));
-                                    } else if (val == 'delete') {
-                                       _confirmDelete(context, item, provider);
-                                    }
-                                  },
-                                  itemBuilder: (ctx) => [
-                                    PopupMenuItem(value: 'edit', child: Text(AppStrings.editTransaction)),
-                                    PopupMenuItem(value: 'delete', child: Text(AppStrings.delete, style: const TextStyle(color: Colors.red))),
-                                  ],
-                                  child: const Padding(
-                                    padding: EdgeInsets.all(8.0),
-                                    child: Icon(Icons.more_vert, size: 20, color: Colors.grey),
-                                  ),
-                                )
-                              ],
-                            )
+                            // Repay Button
+                            if (!isFullyReturned)
+                            TextButton(
+                                onPressed: () => _showRepayDialog(context, summary, provider, isDebts),
+                                child: Text(isDebts ? AppStrings.repay : AppStrings.markAsReturned), 
+                            ),
                          ],
                        )
                     ],
@@ -352,9 +366,9 @@ class _LoansList extends StatelessWidget {
     );
   }
 
-  void _showRepayDialog(BuildContext context, ExpenseModel loan, ExpenseProvider provider, bool isDebts) {
+  void _showRepayDialog(BuildContext context, _PersonLoanSummary summary, ExpenseProvider provider, bool isDebts) {
     final controller = TextEditingController();
-    final remaining = loan.amount - loan.returnedAmount;
+    final remaining = summary.totalAmount - summary.totalReturned;
     
     showDialog(
       context: context,
@@ -364,14 +378,14 @@ class _LoansList extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-             Text("${AppStrings.amountLabel}: ${Utils.formatCurrency(loan.amount)}"), // AppStrings.amountLabel
-             Text("${AppStrings.remaining}${Utils.formatCurrency(remaining)}"),
+             Text("${AppStrings.amountLabel}: ${Utils.formatCurrency(summary.totalAmount)}"), 
+             Text("${AppStrings.remaining} ${Utils.formatCurrency(remaining)}"),
              const SizedBox(height: 16),
              TextField(
                controller: controller,
                keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 decoration: InputDecoration(
-                  labelText: isDebts ? AppStrings.amountLabel : AppStrings.refundAmountReceivedLabel, // or similar
+                  labelText: isDebts ? AppStrings.amountLabel : AppStrings.refundAmountReceivedLabel,
                   hintText: "0.00",
                   border: const OutlineInputBorder(),
                   prefixText: "${Utils.currencySymbol} ",
@@ -385,12 +399,13 @@ class _LoansList extends StatelessWidget {
             onPressed: () {
                final val = double.tryParse(controller.text);
                if (val == null || val <= 0) return;
-               if (val > remaining + 0.01) { // Close enough float tolerance
-                  // Error
+               if (val > remaining + 0.01) { // Close enough 
+                  // Could show error
                   return;
                }
-               // Reuse repayBorrowing because logic (amount returned increase) is symmetric
-               provider.repayBorrowing(loan, val);
+               
+               // Use Bulk Repayment
+               provider.repayBeneficiary(summary.name, val, isDebts ? 'borrow' : 'loan');
                Navigator.pop(ctx);
             }, 
             child: Text(AppStrings.confirm)
@@ -420,3 +435,18 @@ class _LoansList extends StatelessWidget {
     );
   }
 }
+
+class _PersonLoanSummary {
+  final String name;
+  final double totalAmount;
+  final double totalReturned;
+  final List<ExpenseModel> loans;
+
+  _PersonLoanSummary({
+    required this.name,
+    required this.totalAmount,
+    required this.totalReturned,
+    required this.loans,
+  });
+}
+

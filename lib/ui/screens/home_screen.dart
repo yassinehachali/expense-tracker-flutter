@@ -67,6 +67,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         if (mounted) {
            _onItemTapped(2); // Switch to Settings
         }
+      } else if (event == 'switch_to_history') {
+        if (mounted) {
+           _onItemTapped(1); // Switch to History/Transactions
+        }
       }
     });
 

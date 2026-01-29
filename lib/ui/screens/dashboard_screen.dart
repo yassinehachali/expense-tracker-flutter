@@ -22,6 +22,7 @@ import 'add_expense_screen.dart';
 import '../../data/models/category_model.dart';
 import '../../providers/expense_provider.dart';
 import '../../core/theme.dart';
+import '../../core/global_events.dart';
 
 class DashboardScreen extends StatefulWidget {
   final VoidCallback? onViewAll;
@@ -386,36 +387,59 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       
                       return Padding(
                         padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 36, height: 36,
-                              decoration: BoxDecoration(
-                                color: details.color.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(10),
+                        child: GestureDetector(
+                          onTap: () {
+                             // Special Navigation Logic
+                             if (details.name == 'Lending' || details.name == 'lending') {
+                                // "Lending" -> Filter by Type: Loan, No Category
+                                provider.setFilterType('loan');
+                                GlobalEvents.trigger('switch_to_history');
+                             } else if (details.name == 'Borrow Repayment') {
+                                // "Borrow Repayment" -> Filter by Type: Expense (or All), Category: Borrow Repayment
+                                // Actually Borrow Repayment is usually 'expense' type in this app context if we treat it as money out?
+                                // Let's check provider logic. Borrow Repayment is type='expense'.
+                                provider.setFilterType('expense');
+                                provider.setFilterCategory('Borrow Repayment');
+                                GlobalEvents.trigger('switch_to_history');
+                             } else {
+                                // Standard Category
+                                provider.setFilterType('expense'); // Ensure valid filter type first (clears old category)
+                                provider.setFilterCategory(details.name); // Then apply new category
+                                GlobalEvents.trigger('switch_to_history');
+                             }
+                          },
+                          behavior: HitTestBehavior.opaque, // Ensure tap on empty space in row works
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 36, height: 36,
+                                decoration: BoxDecoration(
+                                  color: details.color.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Icon(Utils.getIconData(details.iconKey), color: details.color, size: 18),
                               ),
-                              child: Icon(Utils.getIconData(details.iconKey), color: details.color, size: 18),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(child: Text(details.name, style: const TextStyle(fontWeight: FontWeight.w600))),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Text(Utils.formatCurrency(details.value), style: const TextStyle(fontWeight: FontWeight.bold)),
-                                Text('${percent.toStringAsFixed(1)}%', style: TextStyle(fontSize: 12, color: theme.textTheme.bodySmall?.color)),
-                              ],
-                            ),
-                            const SizedBox(width: 8),
-                            SizedBox(
-                              width: 60,
-                              child: LinearProgressIndicator(
-                                value: percent / 100, 
-                                backgroundColor: theme.dividerColor.withOpacity(0.2),
-                                color: details.color,
-                                borderRadius: BorderRadius.circular(4),
+                              const SizedBox(width: 12),
+                              Expanded(child: Text(details.name, style: const TextStyle(fontWeight: FontWeight.w600))),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text(Utils.formatCurrency(details.value), style: const TextStyle(fontWeight: FontWeight.bold)),
+                                  Text('${percent.toStringAsFixed(1)}%', style: TextStyle(fontSize: 12, color: theme.textTheme.bodySmall?.color)),
+                                ],
                               ),
-                            )
-                          ],
+                              const SizedBox(width: 8),
+                              SizedBox(
+                                width: 60,
+                                child: LinearProgressIndicator(
+                                  value: percent / 100, 
+                                  backgroundColor: theme.dividerColor.withOpacity(0.2),
+                                  color: details.color,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                              )
+                            ],
+                          ),
                         ),
                       );
                     }).toList(),
@@ -533,15 +557,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   List<dynamic> _getMixedList(ExpenseProvider provider) {
-     // 1. Get Expenses for current view (filtered by Provider mostly)
-     // BUT we must exclude those that belong to an Event
-     // 1. Get Expenses for current view (filtered by Provider mostly)
-     // BUT we must exclude those that belong to an Event
-     final viewExpenses = provider.filteredExpenses.where((e) => e.eventId == null || e.eventId!.trim().isEmpty).toList();
+     // 1. Get Expenses for current view (RAW list, manual filter)
+     // Decoupled from provider.filteredExpenses to avoid UI influence
+     final viewExpenses = provider.expenses.where((e) {
+        // Exclude events
+        if (e.eventId != null && e.eventId!.trim().isNotEmpty) return false;
+        
+        // Exclude excluded (past debts etc)
+        if (e.excludeFromBalance) return false;
 
-     // 2. Get Events relevant to current view?
-     // User requirement: "reactive that every time we add a new expense to the event , the event becomes first"
-     // This implies we should show events that were UPDATED in this timeframe.
+        // Check Cycle
+        final d = DateTime.parse(e.date);
+        return provider.isInCurrentCycle(d);
+     }).toList();
+
+     // 2. Get Events relevant to current view
      final start = provider.currentCycleStart;
      final end = provider.currentCycleEnd;
      

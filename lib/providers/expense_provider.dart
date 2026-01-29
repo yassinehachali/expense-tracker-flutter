@@ -814,6 +814,45 @@ class ExpenseProvider with ChangeNotifier {
     await addExpense(expenseTx);
   }
 
+  // --- Bulk Repayment Logic ---
+
+  Future<void> repayBeneficiary(String personName, double totalAmount, String type) async {
+    if (userId == null) return;
+    
+    // 1. Find all active (unreturned) loans associated with this person
+    final activeLoans = _expenses.where((e) {
+      if (e.isReturned) return false;
+      if (e.type != type) return false;
+      
+      final name = e.loanee ?? e.description; // Fallback to description if loanee not set
+      return name.toLowerCase() == personName.toLowerCase();
+    }).toList();
+
+    // 2. Sort by Date (Oldest First)
+    activeLoans.sort((a, b) => a.date.compareTo(b.date));
+
+    // 3. Distribute Amount
+    double remainingToDistribute = totalAmount;
+
+    for (var loan in activeLoans) {
+      if (remainingToDistribute <= 0) break;
+
+      final remainingOnLoan = loan.amount - loan.returnedAmount;
+      double payAmount = 0;
+
+      if (remainingToDistribute >= remainingOnLoan) {
+        payAmount = remainingOnLoan;
+        remainingToDistribute -= remainingOnLoan;
+      } else {
+        payAmount = remainingToDistribute;
+        remainingToDistribute = 0;
+      }
+
+      await repayBorrowing(loan, payAmount);
+    }
+  }
+
+
   // --- Fixed Charges Logic ---
 
   Future<void> addFixedCharge(FixedChargeModel charge) async {
