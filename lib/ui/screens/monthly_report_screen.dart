@@ -13,6 +13,8 @@ import '../widgets/expense_card.dart';
 import 'add_expense_screen.dart';
 import 'event_detail_screen.dart';
 
+import '../../data/services/export_service.dart';
+
 class MonthlyReportScreen extends StatefulWidget {
   const MonthlyReportScreen({super.key});
 
@@ -55,6 +57,127 @@ class _MonthlyReportScreenState extends State<MonthlyReportScreen> {
         _selectedYear--;
       }
     });
+  }
+
+  Future<void> _showExportOptions(
+    BuildContext context, 
+    List<ExpenseModel> expenses,
+    double startingBalance,
+    double income,
+    double spent,
+    double balance,
+    Map<String, double> categoryTotals,
+    ExpenseProvider provider,
+  ) async {
+    // Calculate Active Loans & Borrows
+    List<Map<String, dynamic>> activeLoans = [];
+    List<Map<String, dynamic>> activeBorrows = [];
+
+    final lendings = provider.expenses.where((e) => e.type == 'loan').toList();
+    final borrows = provider.expenses.where((e) => e.type == 'borrow').toList();
+
+    void populateSummary(List<ExpenseModel> source, List<Map<String, dynamic>> target) {
+      final Map<String, List<ExpenseModel>> grouped = {};
+      for (var exp in source) {
+        final name = exp.loanee ?? exp.description;
+        if (!grouped.containsKey(name)) grouped[name] = [];
+        grouped[name]!.add(exp);
+      }
+      
+      grouped.forEach((name, items) {
+        double totalAmount = 0;
+        double totalReturned = 0;
+        for (var i in items) {
+          totalAmount += i.amount;
+          totalReturned += i.returnedAmount;
+        }
+        final remaining = totalAmount - totalReturned;
+        if (totalAmount > 0 && remaining > 0.01) {
+          target.add({
+            'name': name,
+            'totalAmount': totalAmount,
+            'remaining': remaining,
+          });
+        }
+      });
+      target.sort((a, b) => (b['remaining'] as double).compareTo(a['remaining'] as double));
+    }
+
+    populateSummary(lendings, activeLoans);
+    populateSummary(borrows, activeBorrows);
+
+    await showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: Text("Export Options", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              ),
+              const SizedBox(height: 8),
+              const Divider(height: 1),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Text('Simple Export', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 13)),
+              ),
+              ListTile(
+                leading: const Icon(Icons.picture_as_pdf, color: Colors.red),
+                title: const Text('Export as PDF'),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  await ExportService.exportToPdf(
+                    context, _selectedYear, _selectedMonth + 1, expenses, startingBalance, income, spent, balance
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.table_chart, color: Colors.green),
+                title: const Text('Export as Excel'),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  await ExportService.exportToExcel(
+                    context, _selectedYear, _selectedMonth + 1, expenses, startingBalance, income, spent, balance
+                  );
+                },
+              ),
+              const Divider(height: 1),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Text('Advanced Export (Includes category breakdown & active debts)', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 13)),
+              ),
+              ListTile(
+                leading: const Icon(Icons.picture_as_pdf, color: Colors.redAccent),
+                title: const Text('Advanced PDF Report'),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  await ExportService.exportToPdfAdvanced(
+                    context, _selectedYear, _selectedMonth + 1, expenses, startingBalance, income, spent, balance,
+                    categoryTotals, activeLoans, activeBorrows
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.table_chart, color: Colors.green),
+                title: const Text('Advanced Excel Spreadsheet'),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  await ExportService.exportToExcelAdvanced(
+                    context, _selectedYear, _selectedMonth + 1, expenses, startingBalance, income, spent, balance,
+                    categoryTotals, activeLoans, activeBorrows
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -106,53 +229,39 @@ class _MonthlyReportScreenState extends State<MonthlyReportScreen> {
     final rollover = provider.getRolloverForMonth(_selectedYear, _selectedMonth);
     final startingBalance = salary + rollover;
 
-    double totalIncome = 0;
-    double totalExpense = 0;
-    double totalLoansGiven = 0;
-    double totalLoansreturned = 0;
-
-    // Use ALL expenses in range for accurate Totals (ignoring filters for the overview stats, OR matching filter?)
-    // User typically wants "Monthly Analysis" to be the MONTH's analysis.
-    // If I filter by "Food", "Starting Balance" doesn't make sense.
-    // BUT the previous implementation used 'filteredList'. 
-    // If I filter, the Balances show "Balance for this subset".
-    // "Starting Balance" is global for the month.
-    // "Income" (Transaction) depends on filter.
-    // "Balance" depends on filter?
-    // Let's stick to using 'filteredList' for Income/Spent, but keep Starting Balance as Global?
-    // OR, if filter is active, maybe hide "Starting/Balance" and only show "You spent X on Food"?
-    // The user didn't specify behavior under filter. 
-    // SAFEST BET: Use 'allExpenses' (unfiltered) for the top cards to show the MONTH's overview, 
-    // and let the list/chart show the filtered view. 
-    // OR: If filter is active, just calculate totals of that filter.
-    // However, "Starting Balance" is meaningless with a Category Filter.
-    // Let's assume the Stats Cards always show the MONTH's Totals (Unfiltered), 
-    // because "Monthly Analysis" implies a high level view.
-    // If user wants to see "How much Food", they check the Chart or the List sum.
-    // Let's use 'allExpenses' for the Top Cards.
+    double pureIncome = 0;
+    double repaymentsReceived = 0;
+    double spending = 0;
+    double loansGiven = 0;
 
     for (var item in allExpenses) {
       if (item.excludeFromBalance) continue; 
 
       if (item.type == 'income') {
-        totalIncome += item.amount;
+        if (item.category == 'Loan Repayment' || item.category == 'Repayment') {
+           repaymentsReceived += item.amount;
+        } else {
+           pureIncome += item.amount; // Salary, Gifts, etc.
+        }
       } else if (item.type == 'loan') {
-         if (item.isReturned) {
-           totalLoansGiven += item.amount;
-           totalLoansreturned += (item.returnedAmount > 0 ? item.returnedAmount : item.amount);
-         } else {
-           totalLoansGiven += item.amount;
-         }
+           loansGiven += item.amount;
       } else if (item.type == 'expense') {
-        totalExpense += item.amount;
+           spending += item.amount;
+      } else if (item.type == 'borrow') {
+           // Borrowing is strictly Cash In, but is it "Income"? 
+           // Usually tracked as "Income" for Balance purposes, but maybe separate?
+           // For now, treat as Pure Income (Cash In) to increase balance.
+           pureIncome += item.amount; 
       }
     }
     
-    // Net Flow from Transactions
-    final transactionNet = (totalIncome + totalLoansreturned) - (totalExpense + totalLoansGiven);
+    // Net Spent = (Expenses + Loans Given) - (Money you got back from loans)
+    // Conceptually: You spent 1000. Got back 200. Net Spent = 800.
+    final netSpent = (spending + loansGiven) - repaymentsReceived;
     
-    // Final Balance
-    final currentBalance = startingBalance + transactionNet;
+    // Final Balance = Start + Real Income - Net Spent
+    // 10k + 0 - (-1000) = 11k. Correct.
+    final currentBalance = startingBalance + pureIncome - netSpent;
     
     // Sort for list
     filteredList.sort((a, b) => b.date.compareTo(a.date));
@@ -171,6 +280,12 @@ class _MonthlyReportScreenState extends State<MonthlyReportScreen> {
         title: const Text("Monthly Analysis"),
         centerTitle: true,
         backgroundColor: Colors.transparent,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.download),
+            onPressed: () => _showExportOptions(context, allExpenses, startingBalance, pureIncome, netSpent, currentBalance, categoryTotals, provider),
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -198,7 +313,7 @@ class _MonthlyReportScreenState extends State<MonthlyReportScreen> {
           ),
 
           // Stats Cards (Scrollable Row for 4 items)
-          top_stats_section(startingBalance, totalIncome, totalExpense, totalLoansGiven, totalLoansreturned, currentBalance),
+          top_stats_section(startingBalance, pureIncome, spending, loansGiven, repaymentsReceived, currentBalance),
 
           const SizedBox(height: 16),
 
@@ -285,7 +400,7 @@ class _MonthlyReportScreenState extends State<MonthlyReportScreen> {
                             itemBuilder: (ctx, idx) {
                                final entry = sortedCategories[idx];
                                final catDef = provider.categories.firstWhere((c) => c.name == entry.key, orElse: () => CategoryModel(name: entry.key, icon: 'HelpCircle', color: '#808080'));
-                               final pct = (entry.value / (totalExpense == 0 ? 1 : totalExpense) * 100).toStringAsFixed(1);
+                               final pct = (entry.value / (spending == 0 ? 1 : spending) * 100).toStringAsFixed(1);
                                return Padding(
                                  padding: const EdgeInsets.symmetric(vertical: 2),
                                  child: Row(

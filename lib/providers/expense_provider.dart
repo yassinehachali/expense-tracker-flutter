@@ -11,7 +11,12 @@ import '../data/models/beneficiary_model.dart';
 import '../data/services/firestore_service.dart';
 import '../core/constants.dart';
 import '../core/utils.dart';
+import '../core/utils.dart';
 import '../core/app_strings.dart';
+import 'package:home_widget/home_widget.dart';
+import 'package:intl/intl.dart';
+import 'package:home_widget/home_widget.dart';
+import 'package:intl/intl.dart';
 
 class ExpenseProvider with ChangeNotifier {
   ExpenseProvider() {
@@ -99,6 +104,12 @@ class ExpenseProvider with ChangeNotifier {
     // 3. Sort
     final list = uniqueCategories.values.toList();
     list.sort((a, b) => a.order.compareTo(b.order));
+    
+    // 4. Filter out deleted defaults
+    if (_settings.deletedDefaultCategories.isNotEmpty) {
+      return list.where((c) => !_settings.deletedDefaultCategories.contains(c.name)).toList();
+    }
+    
     return list;
   }
 
@@ -218,6 +229,7 @@ class ExpenseProvider with ChangeNotifier {
       _expenses = data;
       _isLoading = false;
       notifyListeners();
+      _updateWidgetData(); // Sync widget on load
     }, onError: (e) {
       _isLoading = false;
       notifyListeners();
@@ -299,6 +311,11 @@ class ExpenseProvider with ChangeNotifier {
     if (userId == null) return;
     await _firestoreService.updateSettings(userId!, {'currency': currencyCode});
     // The stream will trigger and update Utils via _settingsSub
+    
+    // Give stream a moment to update Utils, then sync widget
+    Future.delayed(const Duration(milliseconds: 500), () {
+       _updateWidgetData();
+    });
   }
 
   void setMonth(int month) {
@@ -632,6 +649,8 @@ class ExpenseProvider with ChangeNotifier {
         await updateEvent(updatedEvent);
       }
     }
+    
+    _updateWidgetData();
   }
   
   Future<void> updateExpense(ExpenseModel expense) async {
@@ -687,6 +706,8 @@ class ExpenseProvider with ChangeNotifier {
     } catch (e) {
       print("Error syncing insurance claim: $e");
     }
+    
+    _updateWidgetData();
   }
 
   /// Helper to sync repayment changes back to the original loan
@@ -991,7 +1012,8 @@ class ExpenseProvider with ChangeNotifier {
     // (though usually past months already have data).
 
     // 1. Filter for Auto Charges
-    final autos = _fixedCharges.where((c) => c.isAutoApplied).toList();
+    // SKIP Variable charges here - they are handled by the Startup Check (Interactive)
+    final autos = _fixedCharges.where((c) => c.isAutoApplied && !c.isVariable).toList();
     if (autos.isEmpty) return;
 
     // 2. Initial Setup
@@ -1042,7 +1064,40 @@ class ExpenseProvider with ChangeNotifier {
     }
   }
 
+  /// Checks for due Variable Charges (Auto + Variable) that haven't been applied yet.
+  /// Returns a list of models that need user input.
+  List<FixedChargeModel> checkDueVariableCharges() {
+    if (_fixedCharges.isEmpty) return [];
 
+    final dueVariables = <FixedChargeModel>[];
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    // We only check for the CURRENT cycle view (or should we check 'actual' current date cycle?)
+    // Startup check should probably default to "Current Real Time Cycle".
+    // But since the app state is driven by _selectedYear/_selectedMonth which defaults to "Now", we use that.
+    
+    // Filter: Auto Applied AND Variable
+    final targets = _fixedCharges.where((c) => c.isAutoApplied && c.isVariable).toList();
+
+    for (var charge in targets) {
+       // 1. Check if already applied in this cycle
+       final isApplied = isChargeAppliedInCycle(charge.id, _selectedYear, _selectedMonth);
+       if (isApplied) continue;
+
+       // 2. Check if Due (Date <= Today)
+       // We calculate the expected date for this cycle
+       final targetDate = _calculateChargeDate(_selectedYear, _selectedMonth, charge.dayOfMonth);
+       
+       // If Target Date is today or in the past, it's due.
+       // (e.g. Due 5th. Today 6th. Yes.)
+       // (e.g. Due 5th. Today 4th. No.)
+       if (!targetDate.isAfter(today)) { // Passed or Today
+          dueVariables.add(charge);
+       }
+    }
+    return dueVariables;
+  }
 
   // Helper to check status for UI
   bool isChargeAppliedInCycle(String chargeId, int year, int month) {
@@ -1068,7 +1123,8 @@ class ExpenseProvider with ChangeNotifier {
   /// Manually apply charges (e.g. via UI button).
   /// Can apply [manualOnly] or all.
   /// [chargeId]: Optional, apply ONLY this specific charge (Manual Individual Apply)
-  Future<void> applyFixedChargesToCycle(int year, int month, {bool manualOnly = false, String? chargeId, DateTime? customDate}) async {
+  /// [amountOverride]: Use this amount instead of charge.amount (For Variable Charges)
+  Future<void> applyFixedChargesToCycle(int year, int month, {bool manualOnly = false, String? chargeId, DateTime? customDate, double? amountOverride}) async {
     List<FixedChargeModel> targets;
     
     if (chargeId != null) {
@@ -1081,35 +1137,22 @@ class ExpenseProvider with ChangeNotifier {
        // Check duplication! 
        final alreadyExists = _expenses.any((exp) {
         if (exp.originChargeId != charge.id) return false;
-        // Check if date is in target cycle. 
-        // We really rely on 'isInCurrentCycle' logic which uses _selectedYear/Month.
-        // If year/month passed here are NOT _selectedYear/Month, this check is flawed.
-        // But the UI usually calls this for the current/next month view.
-        
-        // Let's match against the requested year/month params roughly
-        // or rely on the fact that if we are applying to "Next Month", we assume we haven't loaded it?
-        
         // Fix: If applying to Current View, use _expenses check.
         if (year == _selectedYear && month == _selectedMonth) {
            return isInCurrentCycle(DateTime.parse(exp.date));
         }
-        
-        // If applying to different month (e.g. Next Month), we probably don't have the data in _expenses 
-        // unless we fetched it. So we might create a duplicate if we blindly add.
-        // Risk: User applies to Next Month blindly.
-        // For MVP: We only support checking duplicates for the ACTIVE view.
         return false; 
       });
 
       if (!alreadyExists) {
-        await _applyChargeToCycle(charge, year, month, dateOverride: customDate);
+        await _applyChargeToCycle(charge, year, month, dateOverride: customDate, amountOverride: amountOverride);
       } else {
         print("Skipping ${charge.name}, already applied.");
       }
     }
   }
 
-  Future<void> _applyChargeToCycle(FixedChargeModel charge, int year, int month, {DateTime? dateOverride}) async {
+  Future<void> _applyChargeToCycle(FixedChargeModel charge, int year, int month, {DateTime? dateOverride, double? amountOverride}) async {
     // Determine Date
     // logic: cycle start + (day - 1)? Or just day of month?
     // "dayOfMonth" usually means "5th of the month".
@@ -1162,7 +1205,7 @@ class ExpenseProvider with ChangeNotifier {
     // Create Expense
     final newExpense = ExpenseModel(
       id: '', // Firestore gen
-      amount: charge.amount, // For Fixed Charge application
+      amount: amountOverride ?? charge.amount, // Use Override (Variable) or Default
       category: charge.category,
       description: charge.name, // "Rent"
       date: targetDate.toIso8601String(),
@@ -1280,6 +1323,8 @@ class ExpenseProvider with ChangeNotifier {
     }
 
     await _firestoreService.deleteExpense(userId!, id);
+    
+    _updateWidgetData();
   }
   
   // New Methods for Settings
@@ -1336,7 +1381,56 @@ class ExpenseProvider with ChangeNotifier {
   
   Future<void> deleteCategory(CategoryModel cat) async {
      if (userId == null) return;
-     await _firestoreService.deleteCategory(userId!, cat);
+     
+     // Check if it's a default category
+     final isDefault = DEFAULT_CATEGORIES.any((d) => d['name'] == cat.name);
+     
+     if (isDefault) {
+       // Add to hidden list
+       final currentDeleted = List<String>.from(_settings.deletedDefaultCategories);
+       if (!currentDeleted.contains(cat.name)) {
+         currentDeleted.add(cat.name);
+         
+         // Update Settings
+         // We construct a new UserSettingsModel because fields are final
+         _settings = UserSettingsModel(
+           defaultSalary: _settings.defaultSalary,
+           defaultStartDay: _settings.defaultStartDay,
+           monthlyOverrides: _settings.monthlyOverrides,
+           ignoredRollovers: _settings.ignoredRollovers,
+           acceptedRollovers: _settings.acceptedRollovers,
+           deletedDefaultCategories: currentDeleted,
+           language: _settings.language,
+           currency: _settings.currency,
+         );
+         notifyListeners();
+         await _firestoreService.updateSettings(userId!, {
+           'deletedDefaultCategories': currentDeleted
+         });
+       }
+     } else {
+       // Custom category - delete from DB
+       await _firestoreService.deleteCategory(userId!, cat);
+       // Refresh handled by stream or local update if needed, but stream should cover it
+     }
+  }
+
+  Future<void> updateCategory(CategoryModel oldCat, CategoryModel newCat) async {
+     if (userId == null) return;
+     
+     // arrayRemove (Old) + arrayUnion (New)
+     // Ideally we want to be safe. 
+     // We can just call delete then add.
+     
+     // use this.deleteCategory to handle default hiding logic
+     await deleteCategory(oldCat);
+     await _firestoreService.addCategory(userId!, newCat);
+     
+     // Local list update is handled by stream usually? 
+     // Actually categories stream might not be set up to listen to 'modified'?
+     // The 'categories' getter merges defaults + _userCategories. 
+     // _userCategories is updated via _initCategories listener.
+     // So it should auto-update.
   }
 
   Future<void> ignoreRollover(int year, int month) async {
@@ -1476,6 +1570,8 @@ class ExpenseProvider with ChangeNotifier {
     // 4. Perform Firestore Writes (These might wait for server ack, but UI is already happy)
     await _firestoreService.setExpense(userId!, newExpense);
     await _firestoreService.setInsuranceClaim(userId!, claim);
+    
+    _updateWidgetData();
   }
 
   Future<void> editInsuranceClaim(InsuranceClaimModel claim, String newTitle, double newAmount, String newDate) async {
@@ -1677,6 +1773,42 @@ class ExpenseProvider with ChangeNotifier {
   }
 
 
+  Future<void> _updateWidgetData() async {
+    try {
+       final now = DateTime.now();
+       final todayStart = DateTime(now.year, now.month, now.day);
+       final todayEnd = todayStart.add(const Duration(days: 1)).subtract(const Duration(seconds: 1));
+       
+       // Calculate Today's Expense (Expense + Loan)
+       // Exclude 'ExcludeFromBalance' items? Probably yes, to match dashboard.
+       final todayExpenses = _expenses.where((e) {
+          final d = DateTime.parse(e.date);
+          return (d.isAfter(todayStart) || d.isAtSameMomentAs(todayStart)) && 
+                 (d.isBefore(todayEnd) || d.isAtSameMomentAs(todayEnd));
+       }).where((e) => !e.excludeFromBalance && (e.type == 'expense' || e.type == 'loan'));
+
+       double total = 0;
+       for (var e in todayExpenses) {
+          total += e.amount;
+       }
+       
+       // Format Currency
+       final formatted = Utils.formatCurrency(total);
+
+       // Write to Default SharedPreferences (used by home_widget)
+
+       // Write to Default SharedPreferences (used by home_widget)
+       // Note: HomeWidget.saveWidgetData writes to the store accessible by the Native Widget
+       await HomeWidget.saveWidgetData<String>('today_expense', formatted);
+       await HomeWidget.updateWidget(
+          name: 'ExpenseWidgetProvider',
+          androidName: 'ExpenseWidgetProvider',
+       );
+       
+    } catch (e) {
+       print("Error updating widget data: $e");
+    }
+  }
 }
 
 extension ListFilter<T> on List<T> {

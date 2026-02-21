@@ -10,8 +10,11 @@ import 'providers/auth_provider.dart';
 import 'providers/expense_provider.dart';
 import 'ui/screens/login_screen.dart';
 import 'ui/screens/home_screen.dart';
+import 'ui/screens/add_expense_screen.dart';
 import 'package:flutter_localizations/flutter_localizations.dart'; 
 import 'core/app_strings.dart';
+import 'package:home_widget/home_widget.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:workmanager/workmanager.dart';
@@ -34,6 +37,9 @@ void callbackDispatcher() {
 }
 
 
+
+// Global Navigator Key
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -99,6 +105,7 @@ class MyApp extends StatelessWidget {
             valueListenable: AppStrings.languageNotifier,
             builder: (context, lang, child) {
               return MaterialApp(
+                navigatorKey: navigatorKey, // Assign Global Key
                 title: AppStrings.appTitle,
                 debugShowCheckedModeBanner: false,
                 theme: AppTheme.lightTheme,
@@ -125,8 +132,112 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class AuthWrapper extends StatelessWidget {
+class AuthWrapper extends StatefulWidget {
   const AuthWrapper({super.key});
+
+  @override
+  State<AuthWrapper> createState() => _AuthWrapperState();
+}
+
+class _AuthWrapperState extends State<AuthWrapper> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _checkWidgetLaunch();
+    _setupWidgetListener();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkWidgetLaunch();
+    }
+  }
+
+  Future<void> _checkWidgetLaunch() async {
+    // Only check on Android/iOS
+    if (kIsWeb) return;
+
+    try {
+      // 1. Check Native Flag via SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.reload(); // Force reload
+      
+      bool launchIncome = prefs.getBool('widget_launch_add_income') ?? false;
+      bool launchExpense = prefs.getBool('widget_launch_add_expense') ?? false;
+
+      // Small retry loop
+      if (!launchIncome && !launchExpense) {
+         for (int i=0; i<3; i++) {
+            await Future.delayed(const Duration(milliseconds: 200));
+            await prefs.reload();
+            launchIncome = prefs.getBool('widget_launch_add_income') ?? false;
+            launchExpense = prefs.getBool('widget_launch_add_expense') ?? false;
+            if (launchIncome || launchExpense) break;
+         }
+      }
+
+      if (launchIncome) {
+        await prefs.remove('widget_launch_add_income');
+        _navigateToadd(type: 'income');
+        return; 
+      }
+      
+      if (launchExpense) {
+        await prefs.remove('widget_launch_add_expense');
+        _navigateToadd(type: 'expense');
+        return;
+      }
+
+      // Backward compatibility (Small Widget - maps to Expense)
+      final shouldLaunchLegacy = prefs.getBool('widget_launch_add') ?? false;
+      if (shouldLaunchLegacy) {
+         await prefs.remove('widget_launch_add');
+         _navigateToadd(type: 'expense');
+         return;
+      }
+
+      // 2. Fallback to HomeWidget Plugin (for backward compatibility or cold starts)
+      final widgetUri = await HomeWidget.initiallyLaunchedFromHomeWidget();
+      if (widgetUri != null && widgetUri.toString().contains('addTransaction')) {
+         _navigateToadd(type: 'expense');
+      }
+
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  void _navigateToadd({String type = 'expense'}) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        await Future.delayed(const Duration(milliseconds: 300)); // Small delay for Resume state stability
+        if (navigatorKey.currentState != null) {
+           navigatorKey.currentState!.push(
+             MaterialPageRoute(builder: (_) => AddExpenseScreen(initialType: type)),
+           );
+        }
+      });
+  }
+
+  void _setupWidgetListener() {
+    if (kIsWeb) return;
+    HomeWidget.widgetClicked.listen((Uri? uri) {
+      if (uri != null && uri.toString().contains('addTransaction')) {
+         _navigateToadd(type: 'expense');
+      }
+    });
+  }
+
+
+
+
 
   @override
   Widget build(BuildContext context) {

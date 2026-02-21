@@ -186,6 +186,7 @@ class AppStrings {
   // Category Screen
   static String get manageCategories => _t('manageCategories');
   static String get addNewCategory => _t('addNewCategory');
+  static String get categoryName => _t('categoryName');
   static String get categoryNameHint => _t('categoryNameHint');
   static String get selectColor => _t('selectColor');
   static String get selectIcon => _t('selectIcon');
@@ -433,6 +434,7 @@ class AppStrings {
     'downloadFailed': 'Download failed',
     'manageCategories': 'Manage Categories',
     'addNewCategory': 'Add New Category',
+    'categoryName': 'Category Name',
     'categoryNameHint': 'Category Name',
     'selectColor': 'Select Color',
     'selectIcon': 'Select Icon',
@@ -647,6 +649,7 @@ class AppStrings {
     'downloadFailed': 'Échec du téléchargement',
     'manageCategories': 'Gérer les Catégories',
     'addNewCategory': 'Ajouter une Catégorie',
+    'categoryName': 'Nom de la Catégorie',
     'categoryNameHint': 'Nom de la Catégorie',
     'selectColor': 'Choisir la Couleur',
     'selectIcon': 'Choisir l\'Icône',
@@ -866,6 +869,7 @@ class AppStrings {
     'downloadFailed': 'فشل التحميل',
     'manageCategories': 'إدارة الفئات',
     'addNewCategory': 'إضافة فئة جديدة',
+    'categoryName': 'اسم الفئة',
     'categoryNameHint': 'اسم الفئة',
     'selectColor': 'اختر اللون',
     'selectIcon': 'اختر الرمز',

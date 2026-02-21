@@ -289,6 +289,13 @@ class _CategoryScreenState extends State<CategoryScreen> {
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      // Edit Button
+                      IconButton(
+                        icon: const Icon(LucideIcons.pencil, color: Colors.blue, size: 18),
+                        onPressed: () {
+                           _showEditDialog(context, provider, cat);
+                        },
+                      ),
                       // Delete Button
                       IconButton(
                         icon: const Icon(LucideIcons.trash2, color: Colors.grey, size: 18),
@@ -313,6 +320,146 @@ class _CategoryScreenState extends State<CategoryScreen> {
           );
         },
       ),
+    );
+  }
+
+  void _showEditDialog(BuildContext context, ExpenseProvider provider, CategoryModel category) {
+    final nameController = TextEditingController(text: category.name);
+    // Use local state for dialog to update UI within dialog
+    // We need StatefulBuilder or extract widget. StatefulBuilder is easiest.
+    
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        String selectedIcon = category.icon;
+        Color selectedColor = hexToColor(category.color);
+        final theme = Theme.of(context);
+
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              title: Text("Edit '${category.name}'"),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      TextField(
+                        controller: nameController,
+                        decoration: InputDecoration(
+                          labelText: AppStrings.categoryName,
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                          prefixIcon: const Icon(LucideIcons.tag),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      
+                      // Color Picker (Reuse Logic)
+                      Text(AppStrings.selectColor, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 50,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: AppColors.palette.length,
+                          separatorBuilder: (_, __) => const SizedBox(width: 12),
+                          itemBuilder: (ctx, index) {
+                            final color = AppColors.palette[index];
+                            final isSelected = selectedColor == color;
+                            return GestureDetector(
+                              onTap: () => setStateDialog(() => selectedColor = color),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                width: 50,
+                                height: 50,
+                                decoration: BoxDecoration(
+                                  color: color,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: isSelected ? Colors.white : Colors.transparent, 
+                                    width: isSelected ? 3 : 0
+                                  ),
+                                  boxShadow: isSelected ? [
+                                    BoxShadow(color: color.withOpacity(0.5), blurRadius: 8, offset: const Offset(0, 4))
+                                  ] : [],
+                                ),
+                                child: isSelected ? const Icon(Icons.check, color: Colors.white, size: 20) : null,
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      Text(AppStrings.selectIcon, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 50,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: _availableIcons.length,
+                          separatorBuilder: (_, __) => const SizedBox(width: 12),
+                          itemBuilder: (ctx, index) {
+                            final iconKey = _availableIcons[index];
+                            final isSelected = selectedIcon == iconKey;
+                            return GestureDetector(
+                              onTap: () => setStateDialog(() => selectedIcon = iconKey),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                width: 50,
+                                height: 50,
+                                decoration: BoxDecoration(
+                                  color: isSelected ? Color.lerp(theme.primaryColor, Colors.white, 0.3) : theme.cardColor,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: isSelected ? Colors.white : theme.dividerColor,
+                                    width: isSelected ? 3 : 1
+                                  ),
+                                ),
+                                child: Center(
+                                  child: CategoryIcon(
+                                    iconKey: iconKey, 
+                                    color: isSelected ? Colors.white : theme.iconTheme.color,
+                                    size: 24,
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: Text(AppStrings.cancel),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    if (nameController.text.trim().isEmpty) return;
+                    
+                    final newCat = CategoryModel(
+                      name: nameController.text.trim(),
+                      icon: selectedIcon,
+                      color: colorToHex(selectedColor),
+                      order: category.order, // Preserve order
+                    );
+                    
+                    await provider.updateCategory(category, newCat);
+                    if (ctx.mounted) Navigator.pop(ctx);
+                  },
+                  child: Text(AppStrings.save),
+                ),
+              ],
+            );
+          }
+        );
+      },
     );
   }
 }

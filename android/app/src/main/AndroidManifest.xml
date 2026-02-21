@@ -56,6 +56,21 @@
             </intent-filter>
         </receiver>
 
+        <receiver android:name=".ExpenseWidgetProvider" android:label="Add Transaction (Wide)" android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info" />
+        </receiver>
+
+        <!-- Small Widget Provider -->
+        <receiver android:name=".SmallExpenseWidgetProvider" android:label="Add Transaction (Small)" android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_small" />
+        </receiver>
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

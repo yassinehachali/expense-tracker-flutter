@@ -156,9 +156,18 @@ class FirestoreService {
   }
 
   Future<void> deleteCategory(String uid, CategoryModel category) async {
-    await _getCategoriesRef(uid).update({
-      'list': FieldValue.arrayRemove([category.toMap()])
-    });
+    try {
+      await _getCategoriesRef(uid).update({
+        'list': FieldValue.arrayRemove([category.toMap()])
+      });
+    } catch (e) {
+      // If doc doesn't exist, there's nothing to delete. Ignore 'not-found'.
+      // Rethrow other errors.
+      if (e.toString().contains('not-found') || e.toString().contains('No document to update')) {
+        return;
+      }
+      rethrow;
+    }
   }
 
   Future<void> updateCategoryList(String uid, List<CategoryModel> categories) async {

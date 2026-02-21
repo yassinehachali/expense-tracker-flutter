@@ -3,7 +3,9 @@ import 'package:flutter/foundation.dart'; // For kIsWeb
 import 'package:provider/provider.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/global_events.dart';
+import '../../core/utils.dart'; // Added Import
 import '../../providers/expense_provider.dart';
+import '../../data/models/fixed_charge_model.dart'; // Added Import
 import 'dashboard_screen.dart';
 import 'transactions_screen.dart';
 import 'settings_screen.dart';
@@ -78,6 +80,101 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     if (!kIsWeb) {
       _initNotifications();
     }
+    
+    // Check for Due Variable Charges (Interactive Auto-Apply)
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+       await _checkStartupVariables();
+    });
+  }
+  
+  Future<void> _checkStartupVariables() async {
+     final provider = Provider.of<ExpenseProvider>(context, listen: false);
+     // We need to wait for data? Usually provider loads fast or is cached.
+     // Adding a small delay to ensure provider has data if it's async loading
+     await Future.delayed(const Duration(seconds: 1));
+     if (!mounted) return;
+     
+     final dueCharges = provider.checkDueVariableCharges();
+     
+     if (dueCharges.isNotEmpty) {
+        // Show dialogs sequentially
+        for (final charge in dueCharges) {
+           if (!mounted) break;
+           await _showVariableChargeDialog(charge);
+        }
+     }
+  }
+  
+  Future<void> _showVariableChargeDialog(dynamic charge) async { // dynamic to avoid import if not needed, but better to import model
+     // Import FixedChargeModel or cast
+     // Let's assume we can import it or use dynamic if import is missing (I'll add import below)
+     final provider = Provider.of<ExpenseProvider>(context, listen: false);
+     final monthName = Utils.getMonthName(provider.selectedMonth);
+     
+     final controller = TextEditingController(text: charge.amount.toString());
+     
+     await showDialog(
+       context: context,
+       barrierDismissible: false, // Force decision
+       builder: (ctx) => AlertDialog(
+         title: Row(
+           children: [
+             const Icon(LucideIcons.zap, color: Colors.amber), // Dynamic icon?
+             const SizedBox(width: 8),
+             Text(charge.name),
+           ],
+         ), 
+         content: Column(
+           mainAxisSize: MainAxisSize.min,
+           crossAxisAlignment: CrossAxisAlignment.start,
+           children: [
+             Text("This variable charge is due for $monthName."),
+             const SizedBox(height: 16),
+             Text("Estimated Amount: ${Utils.formatCurrency(charge.amount)}", style: TextStyle(fontSize: 12, color: Colors.grey)),
+             const SizedBox(height: 8),
+             TextField(
+               controller: controller,
+               keyboardType: TextInputType.number,
+               decoration: const InputDecoration(
+                 labelText: "Enter Actual Amount",
+                 border: OutlineInputBorder(),
+               ),
+               autofocus: true,
+             ),
+           ],
+         ),
+         actions: [
+           TextButton(
+             onPressed: () {
+               // User wants to skip for now
+               Navigator.pop(ctx);
+             }, 
+             child: const Text("Skip"),
+           ),
+           ElevatedButton(
+             onPressed: () async {
+                final val = double.tryParse(controller.text);
+                if (val == null || val <= 0) return;
+                
+                Navigator.pop(ctx);
+                
+                await provider.applyFixedChargesToCycle(
+                   provider.selectedYear, 
+                   provider.selectedMonth,
+                   chargeId: charge.id,
+                   customDate: DateTime.now(),
+                   amountOverride: val
+                );
+                
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("${charge.name} applied!")));
+                }
+             }, 
+             child: const Text("Confirm"),
+           )
+         ],
+       ),
+     );
   }
 
   Future<void> _initNotifications() async {

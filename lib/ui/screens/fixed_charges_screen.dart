@@ -241,6 +241,7 @@ class FixedChargesScreen extends StatelessWidget {
     int selectedDay = charge?.dayOfMonth ?? 1;
     bool isAuto = charge?.isAutoApplied ?? false;
     bool delayedAutoPay = charge?.delayedAutoPay ?? false;
+    bool isVariable = charge?.isVariable ?? false;
 
     showDialog(
       context: context,
@@ -432,14 +433,32 @@ class FixedChargesScreen extends StatelessWidget {
                     }
                   ),
                   const Divider(height: 32),
+                  // Variable Switch
+                  SwitchListTile(
+                    title: const Text("Variable Amount?"),
+                    subtitle: const Text("Amount changes each month (e.g. Electricity)"),
+                    value: isVariable,
+                    activeColor: Colors.blue,
+                    onChanged: (val) {
+                       setState(() {
+                         isVariable = val;
+                         if (val) {
+                           // Variable implies Manual usually, but we support "Auto Prompt".
+                           // For now, let's keep Auto enabled but it triggers prompt.
+                           // Actually Provider logic supports Auto+Variable -> Startup Prompt.
+                         }
+                       });
+                    },
+                    contentPadding: EdgeInsets.zero,
+                  ),
                   SwitchListTile(
                     title: Text(AppStrings.autoApply),
-                    subtitle: Text(AppStrings.autoApplySubtitle),
+                    subtitle: Text(isVariable ? "Prompt me at startup when due" : AppStrings.autoApplySubtitle),
                     value: isAuto,
                     onChanged: (val) => setState(() => isAuto = val),
                     contentPadding: EdgeInsets.zero,
                   ),
-                  if (isAuto)
+                  if (isAuto && !isVariable) // Delay irrelevant for Interactive Variable
                     SwitchListTile(
                       title: Text(AppStrings.waitForDueDate),
                       subtitle: Text(AppStrings.waitForDueDateSubtitle),
@@ -481,6 +500,7 @@ class FixedChargesScreen extends StatelessWidget {
                     dayOfMonth: selectedDay,
                     isAutoApplied: isAuto,
                     delayedAutoPay: delayedAutoPay,
+                    isVariable: isVariable,
                   );
 
                   try {
@@ -549,6 +569,13 @@ class _ChargeTile extends StatelessWidget {
                   ],
                 ),
               ),
+            if (charge.isVariable)
+               Container(
+                 margin: const EdgeInsets.only(top: 4),
+                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                 decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+                 child: const Text("Variable", style: TextStyle(fontSize: 10, color: Colors.blue, fontWeight: FontWeight.bold)),
+               )
           ],
         ),
         trailing: Row(
@@ -578,7 +605,62 @@ class _ChargeTile extends StatelessWidget {
     // Determine target cycle (Current View)
     final year = provider.selectedYear;
     final month = provider.selectedMonth;
+    final monthName = Utils.getMonthName(month);
     
+    // IF VARIABLE: Prompt for amount
+    if (charge.isVariable) {
+       final controller = TextEditingController(text: charge.amount.toString());
+       showDialog(
+         context: context,
+         builder: (ctx) => AlertDialog(
+           title: Text("Variable Charge: ${charge.name}"),
+           content: Column(
+             mainAxisSize: MainAxisSize.min,
+             children: [
+               Text("Enter the amount for $monthName"),
+               const SizedBox(height: 16),
+               TextField(
+                 controller: controller,
+                 keyboardType: TextInputType.number,
+                 decoration: InputDecoration(
+                   labelText: AppStrings.amountLabel,
+                   prefixText: "${Utils.currencySymbol} ",
+                   border: OutlineInputBorder(),
+                 ),
+                 autofocus: true,
+               ),
+             ],
+           ),
+           actions: [
+             TextButton(onPressed: () => Navigator.pop(ctx), child: Text(AppStrings.cancel)),
+             TextButton(
+               onPressed: () async {
+                 final val = double.tryParse(controller.text) ?? 0;
+                 if (val <= 0) return;
+                 
+                 Navigator.pop(ctx);
+                 await provider.applyFixedChargesToCycle(
+                     year, 
+                     month, 
+                     chargeId: charge.id,
+                     customDate: DateTime.now(), // Individual apply uses "Now"
+                     amountOverride: val // Pass Custom Amount
+                 );
+                 if (context.mounted) {
+                   ScaffoldMessenger.of(context).showSnackBar(
+                     SnackBar(content: Text("${charge.name} applied with ${Utils.formatCurrency(val)}")),
+                   );
+                 }
+               },
+               child: Text(AppStrings.apply),
+             ),
+           ],
+         ),
+       );
+       return;
+    }
+
+    // NORMAL FIXED CHARGE
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(

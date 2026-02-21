@@ -35,6 +35,7 @@ class UserSettingsModel {
   final Map<String, MonthlySettings> monthlyOverrides; // Key: "yyyy-MM"
   final List<String> ignoredRollovers; // Key: "yyyy-MM" where rollover is disabled
   final List<String> acceptedRollovers; // Key: "yyyy-MM" where rollover is explicitly accepted
+  final List<String> deletedDefaultCategories; // Names of defaults to hide
   final String? language;
   final String? currency; // Added currency field
 
@@ -44,6 +45,7 @@ class UserSettingsModel {
     this.monthlyOverrides = const {},
     this.ignoredRollovers = const [],
     this.acceptedRollovers = const [],
+    this.deletedDefaultCategories = const [],
     this.language,
     this.currency,
   });
@@ -66,12 +68,18 @@ class UserSettingsModel {
       accepted.addAll(List<String>.from(map['acceptedRollovers']));
     }
 
+    final deletedDefaults = <String>[];
+    if (map['deletedDefaultCategories'] != null) {
+      deletedDefaults.addAll(List<String>.from(map['deletedDefaultCategories']));
+    }
+
     return UserSettingsModel(
       defaultSalary: (map['defaultSalary'] ?? map['salary'] ?? 0).toDouble(), // fallback for migration
       defaultStartDay: map['defaultStartDay'] ?? map['salaryDate'] ?? 1,
       monthlyOverrides: overrides,
       ignoredRollovers: ignored,
       acceptedRollovers: accepted,
+      deletedDefaultCategories: deletedDefaults,
       language: map['language'], // Allow null
       currency: map['currency'], // Added
     );
@@ -85,6 +93,7 @@ class UserSettingsModel {
        'monthlyOverrides': monthlyOverrides.map((k, v) => MapEntry(k, v.toMap())),
        'ignoredRollovers': ignoredRollovers,
        'acceptedRollovers': acceptedRollovers,
+       'deletedDefaultCategories': deletedDefaultCategories,
        'language': language,
        'currency': currency,
      };
